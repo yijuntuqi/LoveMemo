@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Sparkles, ImagePlus, X, MapPin } from "lucide-react";
+import { Sparkles, ImagePlus, X, MapPin, Search, Loader2 } from "lucide-react";
 import { pickMediaFile, importMedia, getMediaUrl, isVideo } from "../utils/media";
 import { generateMemoryText } from "../utils/ai";
+import { searchLocation, type LocationResult } from "../utils/location";
 import { getSettings } from "../db";
 import type { MemoryEvent, AppSettings } from "../types";
 
@@ -21,6 +22,7 @@ export interface EventFormData {
   longitude: string;
   tags: string;
   coverImage: string;
+  showOnMap: boolean;
   media: { path: string; type: "image" | "video"; caption: string }[];
 }
 
@@ -39,10 +41,14 @@ export default function EventForm({
     longitude: "",
     tags: "",
     coverImage: "",
+    showOnMap: true,
     media: [],
   });
   const [aiLoading, setAiLoading] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState<LocationResult[]>([]);
 
   useEffect(() => {
     getSettings().then((s) => setSettings(s as AppSettings));
@@ -57,6 +63,7 @@ export default function EventForm({
         longitude: initialData.longitude?.toString() || "",
         tags: initialData.tags || "",
         coverImage: initialData.coverImage || "",
+        showOnMap: initialData.showOnMap !== false,
         media: initialMedia || [],
       }));
     } else {
@@ -69,9 +76,12 @@ export default function EventForm({
         longitude: "",
         tags: "",
         coverImage: "",
+        showOnMap: true,
         media: [],
       });
     }
+    setSearchQuery("");
+    setSearchResults([]);
   }, [initialData, initialMedia]);
 
   function updateField<K extends keyof EventFormData>(
@@ -129,6 +139,34 @@ export default function EventForm({
     }
   }
 
+  async function handleSearchLocation() {
+    if (!searchQuery.trim()) return;
+    setSearchLoading(true);
+    setSearchResults([]);
+    try {
+      const results = await searchLocation(searchQuery.trim());
+      setSearchResults(results);
+      if (results.length === 0) {
+        alert("未找到相关地点，请尝试更具体的关键词");
+      }
+    } catch (e) {
+      alert("地点搜索失败: " + e);
+    } finally {
+      setSearchLoading(false);
+    }
+  }
+
+  function applyLocation(result: LocationResult) {
+    setForm((prev) => ({
+      ...prev,
+      location: result.displayName,
+      latitude: result.latitude.toString(),
+      longitude: result.longitude.toString(),
+    }));
+    setSearchResults([]);
+    setSearchQuery("");
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     onSubmit(form);
@@ -179,6 +217,48 @@ export default function EventForm({
 
       <div>
         <label className="block text-sm font-medium text-slate-600 mb-1">
+          地点搜索
+        </label>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-2.5 w-5 h-5 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleSearchLocation())}
+              className="w-full pl-10 pr-4 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
+              placeholder="输入地点名称搜索（免费，来自 OpenStreetMap）"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleSearchLocation}
+            disabled={searchLoading}
+            className="px-4 py-2 bg-rose-100 text-rose-600 rounded-xl hover:bg-rose-200 disabled:opacity-50 flex items-center gap-1"
+          >
+            {searchLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            搜索
+          </button>
+        </div>
+        {searchResults.length > 0 && (
+          <div className="mt-2 border border-rose-200 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
+            {searchResults.map((result, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => applyLocation(result)}
+                className="w-full text-left px-4 py-2 hover:bg-rose-50 text-sm text-slate-700 border-b border-rose-100 last:border-0"
+              >
+                {result.displayName}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-600 mb-1">
           地点
         </label>
         <div className="relative">
@@ -221,6 +301,16 @@ export default function EventForm({
           />
         </div>
       </div>
+
+      <label className="flex items-center gap-2 text-sm text-slate-600">
+        <input
+          type="checkbox"
+          checked={form.showOnMap}
+          onChange={(e) => updateField("showOnMap", e.target.checked)}
+          className="w-4 h-4 text-rose-500 rounded border-rose-200 focus:ring-rose-300"
+        />
+        同时添加到恋爱地图
+      </label>
 
       <div>
         <div className="flex items-center justify-between mb-1">

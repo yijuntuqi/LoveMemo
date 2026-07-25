@@ -15,6 +15,18 @@ import {
 } from "../utils/file";
 import type { AppSettings } from "../types";
 
+const AI_PRESETS: Record<string, { baseUrl: string; model: string }> = {
+  moonshot: { baseUrl: "https://api.moonshot.cn/v1", model: "moonshot-v1-8k" },
+  chatanywhere: { baseUrl: "https://api.chatanywhere.tech/v1", model: "gpt-3.5-turbo" },
+  openai: { baseUrl: "https://api.openai.com/v1", model: "gpt-3.5-turbo" },
+  azure: { baseUrl: "https://<resource>.openai.azure.com/openai/deployments/<deployment>", model: "gpt-4o" },
+  gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-1.5-flash" },
+  deepseek: { baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat" },
+  siliconflow: { baseUrl: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen2.5-7B-Instruct" },
+  zhipu: { baseUrl: "https://open.bigmodel.cn/api/paas/v4", model: "glm-4-flash" },
+  custom: { baseUrl: "", model: "" },
+};
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>({});
   const [saved, setSaved] = useState(false);
@@ -38,17 +50,12 @@ export default function SettingsPage() {
 
   function applyDefaultAiConfig() {
     const provider = settings.aiProvider || "moonshot";
-    if (provider === "moonshot") {
+    const preset = AI_PRESETS[provider];
+    if (preset) {
       setSettings((prev) => ({
         ...prev,
-        aiBaseUrl: "https://api.moonshot.cn/v1",
-        aiModel: "moonshot-v1-8k",
-      }));
-    } else {
-      setSettings((prev) => ({
-        ...prev,
-        aiBaseUrl: "https://api.chatanywhere.tech/v1",
-        aiModel: "gpt-3.5-turbo",
+        aiBaseUrl: preset.baseUrl,
+        aiModel: preset.model,
       }));
     }
     setSaved(false);
@@ -173,16 +180,18 @@ export default function SettingsPage() {
               </label>
               <select
                 value={settings.aiProvider || "moonshot"}
-                onChange={(e) =>
-                  handleChange(
-                    "aiProvider",
-                    e.target.value as "moonshot" | "chatanywhere",
-                  )
-                }
+                onChange={(e) => handleChange("aiProvider", e.target.value)}
                 className="w-full px-4 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
               >
                 <option value="moonshot">Moonshot (Kimi)</option>
                 <option value="chatanywhere">ChatAnywhere</option>
+                <option value="openai">OpenAI</option>
+                <option value="azure">Azure OpenAI</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="siliconflow">硅基流动 (SiliconFlow)</option>
+                <option value="zhipu">智谱 AI (GLM)</option>
+                <option value="custom">自定义 OpenAI 兼容接口</option>
               </select>
             </div>
             <div>

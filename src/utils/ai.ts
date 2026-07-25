@@ -5,20 +5,30 @@ interface ChatMessage {
   content: string;
 }
 
+const AI_PRESETS: Record<string, { baseUrl: string; model: string }> = {
+  moonshot: { baseUrl: "https://api.moonshot.cn/v1", model: "moonshot-v1-8k" },
+  chatanywhere: {
+    baseUrl: "https://api.chatanywhere.tech/v1",
+    model: "gpt-3.5-turbo",
+  },
+  openai: { baseUrl: "https://api.openai.com/v1", model: "gpt-3.5-turbo" },
+  azure: { baseUrl: "https://<resource>.openai.azure.com/openai/deployments/<deployment>", model: "gpt-4o" },
+  gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-1.5-flash" },
+  deepseek: { baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat" },
+  siliconflow: { baseUrl: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen2.5-7B-Instruct" },
+  zhipu: { baseUrl: "https://open.bigmodel.cn/api/paas/v4", model: "glm-4-flash" },
+};
+
 export async function generateMemoryText(
   prompt: string,
   settings: AppSettings,
 ): Promise<string> {
   const provider = settings.aiProvider || "moonshot";
-  const apiKey = settings.aiApiKey;
-  const model =
-    settings.aiModel ||
-    (provider === "moonshot" ? "moonshot-v1-8k" : "gpt-3.5-turbo");
+  const apiKey = (settings.aiApiKey || "").trim();
+  const preset = AI_PRESETS[provider];
+  const model = settings.aiModel || preset?.model || "moonshot-v1-8k";
   const baseUrl =
-    settings.aiBaseUrl ||
-    (provider === "moonshot"
-      ? "https://api.moonshot.cn/v1"
-      : "https://api.chatanywhere.tech/v1");
+    (settings.aiBaseUrl || "").trim() || preset?.baseUrl || "https://api.moonshot.cn/v1";
 
   if (!apiKey) {
     throw new Error("请先设置 AI API Key");
@@ -33,7 +43,7 @@ export async function generateMemoryText(
     { role: "user", content: prompt },
   ];
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -48,6 +58,11 @@ export async function generateMemoryText(
 
   if (!response.ok) {
     const error = await response.text();
+    if (response.status === 401) {
+      throw new Error(
+        `AI 认证失败（401）：请检查 API Key 是否正确，以及当前服务商 "${provider}" 与 Key 是否匹配。`,
+      );
+    }
     throw new Error(`AI 请求失败: ${response.status} ${error}`);
   }
 

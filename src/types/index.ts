@@ -8,6 +8,7 @@ export interface MemoryEvent {
   longitude?: number;
   tags?: string;
   coverImage?: string;
+  showOnMap?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -27,15 +28,26 @@ export interface Anniversary {
   title: string;
   date: string;
   repeatYearly: boolean;
+  repeatType: "none" | "weekly" | "monthly" | "yearly";
+  category: AnniversaryCategory;
   icon?: string;
 }
+
+export type AnniversaryCategory =
+  | "date"
+  | "gift"
+  | "travel"
+  | "kiss"
+  | "wedding"
+  | "birthday"
+  | "custom";
 
 export interface AppSettings {
   coupleName?: string;
   startDate?: string;
   partnerName?: string;
   myName?: string;
-  aiProvider?: "moonshot" | "chatanywhere";
+  aiProvider?: string;
   aiApiKey?: string;
   aiBaseUrl?: string;
   aiModel?: string;

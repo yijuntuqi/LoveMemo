@@ -21,10 +21,15 @@ export async function initDatabase(): Promise<Database> {
       longitude REAL,
       tags TEXT,
       cover_image TEXT,
+      show_on_map INTEGER DEFAULT 1,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  try {
+    await db.execute(`ALTER TABLE events ADD COLUMN show_on_map INTEGER DEFAULT 1`);
+  } catch {}
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS media (
@@ -45,10 +50,20 @@ export async function initDatabase(): Promise<Database> {
       title TEXT NOT NULL,
       date TEXT NOT NULL,
       repeat_yearly INTEGER DEFAULT 1,
+      repeat_type TEXT DEFAULT 'yearly',
+      category TEXT DEFAULT 'gift',
       icon TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // 兼容旧版：为已存在的表补字段
+  try {
+    await db.execute(`ALTER TABLE anniversaries ADD COLUMN repeat_type TEXT DEFAULT 'yearly'`);
+  } catch {}
+  try {
+    await db.execute(`ALTER TABLE anniversaries ADD COLUMN category TEXT DEFAULT 'gift'`);
+  } catch {}
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS settings (
@@ -75,6 +90,7 @@ function mapEventRow(row: {
   longitude: number;
   tags: string;
   cover_image: string;
+  show_on_map: number;
   created_at: string;
   updated_at: string;
 }): MemoryEvent {
@@ -88,6 +104,7 @@ function mapEventRow(row: {
     longitude: row.longitude,
     tags: row.tags,
     coverImage: row.cover_image,
+    showOnMap: row.show_on_map === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -118,14 +135,19 @@ function mapAnniversaryRow(row: {
   title: string;
   date: string;
   repeat_yearly: number;
+  repeat_type: string;
+  category: string;
   icon: string;
   created_at: string;
 }): Anniversary {
+  const repeatType = (row.repeat_type || "yearly") as Anniversary["repeatType"];
   return {
     id: row.id,
     title: row.title,
     date: row.date,
-    repeatYearly: Boolean(row.repeat_yearly),
+    repeatYearly: repeatType === "yearly" || Boolean(row.repeat_yearly),
+    repeatType,
+    category: (row.category || "gift") as Anniversary["category"],
     icon: row.icon,
   };
 }
@@ -140,13 +162,14 @@ export interface EventInput {
   longitude?: number;
   tags?: string;
   coverImage?: string;
+  showOnMap?: boolean;
 }
 
 export async function createEvent(input: EventInput) {
   const database = await getDb();
   const result = await database.execute(
-    `INSERT INTO events (title, content, date, location, latitude, longitude, tags, cover_image)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO events (title, content, date, location, latitude, longitude, tags, cover_image, show_on_map)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.title,
       input.content || null,
@@ -156,6 +179,7 @@ export async function createEvent(input: EventInput) {
       input.longitude ?? null,
       input.tags || null,
       input.coverImage || null,
+      input.showOnMap === false ? 0 : 1,
     ],
   );
   return result.lastInsertId;
@@ -166,7 +190,7 @@ export async function updateEvent(id: number, input: EventInput) {
   await database.execute(
     `UPDATE events SET
       title = ?, content = ?, date = ?, location = ?,
-      latitude = ?, longitude = ?, tags = ?, cover_image = ?,
+      latitude = ?, longitude = ?, tags = ?, cover_image = ?, show_on_map = ?,
       updated_at = CURRENT_TIMESTAMP
      WHERE id = ?`,
     [
@@ -178,6 +202,7 @@ export async function updateEvent(id: number, input: EventInput) {
       input.longitude ?? null,
       input.tags || null,
       input.coverImage || null,
+      input.showOnMap === false ? 0 : 1,
       id,
     ],
   );
@@ -201,6 +226,7 @@ export async function getEventById(id: number): Promise<MemoryEvent | null> {
       longitude: number;
       tags: string;
       cover_image: string;
+      show_on_map: number;
       created_at: string;
       updated_at: string;
     }[]
@@ -221,6 +247,7 @@ export async function getEvents(): Promise<MemoryEvent[]> {
       longitude: number;
       tags: string;
       cover_image: string;
+      show_on_map: number;
       created_at: string;
       updated_at: string;
     }[]
@@ -293,16 +320,24 @@ export async function clearMediaByEventId(eventId: number) {
 export interface AnniversaryInput {
   title: string;
   date: string;
-  repeatYearly: boolean;
+  repeatType: Anniversary["repeatType"];
+  category: Anniversary["category"];
   icon?: string;
 }
 
 export async function createAnniversary(input: AnniversaryInput) {
   const database = await getDb();
   const result = await database.execute(
-    `INSERT INTO anniversaries (title, date, repeat_yearly, icon)
-     VALUES (?, ?, ?, ?)`,
-    [input.title, input.date, input.repeatYearly ? 1 : 0, input.icon || null],
+    `INSERT INTO anniversaries (title, date, repeat_yearly, repeat_type, category, icon)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      input.title,
+      input.date,
+      input.repeatType === "yearly" ? 1 : 0,
+      input.repeatType,
+      input.category,
+      input.icon || null,
+    ],
   );
   return result.lastInsertId;
 }
@@ -311,9 +346,17 @@ export async function updateAnniversary(id: number, input: AnniversaryInput) {
   const database = await getDb();
   await database.execute(
     `UPDATE anniversaries SET
-      title = ?, date = ?, repeat_yearly = ?, icon = ?
+      title = ?, date = ?, repeat_yearly = ?, repeat_type = ?, category = ?, icon = ?
      WHERE id = ?`,
-    [input.title, input.date, input.repeatYearly ? 1 : 0, input.icon || null, id],
+    [
+      input.title,
+      input.date,
+      input.repeatType === "yearly" ? 1 : 0,
+      input.repeatType,
+      input.category,
+      input.icon || null,
+      id,
+    ],
   );
 }
 
@@ -330,6 +373,8 @@ export async function getAnniversaries(): Promise<Anniversary[]> {
       title: string;
       date: string;
       repeat_yearly: number;
+      repeat_type: string;
+      category: string;
       icon: string;
       created_at: string;
     }[]
@@ -386,6 +431,7 @@ export async function exportAllData(): Promise<AppBackup> {
         longitude: number;
         tags: string;
         cover_image: string;
+        show_on_map: number;
         created_at: string;
         updated_at: string;
       }[]
@@ -407,6 +453,8 @@ export async function exportAllData(): Promise<AppBackup> {
         title: string;
         date: string;
         repeat_yearly: number;
+        repeat_type: string;
+        category: string;
         icon: string;
         created_at: string;
       }[]
@@ -434,8 +482,8 @@ export async function importAllData(data: AppBackup) {
 
   for (const event of data.events) {
     await database.execute(
-      `INSERT INTO events (id, title, content, date, location, latitude, longitude, tags, cover_image, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO events (id, title, content, date, location, latitude, longitude, tags, cover_image, show_on_map, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         event.id,
         event.title,
@@ -446,6 +494,7 @@ export async function importAllData(data: AppBackup) {
         event.longitude ?? null,
         event.tags || null,
         event.coverImage || null,
+        event.showOnMap === false ? 0 : 1,
         event.createdAt,
         event.updatedAt,
       ],
@@ -470,13 +519,15 @@ export async function importAllData(data: AppBackup) {
 
   for (const item of data.anniversaries) {
     await database.execute(
-      `INSERT INTO anniversaries (id, title, date, repeat_yearly, icon, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO anniversaries (id, title, date, repeat_yearly, repeat_type, category, icon, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         item.id,
         item.title,
         item.date,
-        item.repeatYearly ? 1 : 0,
+        item.repeatType === "yearly" ? 1 : 0,
+        item.repeatType || "yearly",
+        item.category || "gift",
         item.icon || null,
         new Date().toISOString(),
       ],

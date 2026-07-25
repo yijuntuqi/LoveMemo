@@ -31,3 +31,24 @@
     @apply bg-rose-300;
   }
 }
+
+@media print {
+  /* 隐藏浏览器默认页眉页脚 */
+  @page {
+    margin: 1.5cm 1.5cm 2cm 1.5cm;
+    @bottom-center {
+      content: "created by LoveMemo";
+      font-size: 10pt;
+      color: #94a3b8;
+    }
+  }
+
+  body {
+    background: white !important;
+  }
+
+  /* 隐藏应用本身不适合打印的元素 */
+  .print\:hidden {
+    display: none !important;
+  }
+}

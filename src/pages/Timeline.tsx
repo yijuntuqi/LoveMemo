@@ -59,6 +59,7 @@ export default function Timeline() {
       longitude: form.longitude ? parseFloat(form.longitude) : undefined,
       tags: form.tags || undefined,
       coverImage: form.coverImage || undefined,
+      showOnMap: form.showOnMap,
     };
 
     if (editingEvent) {

@@ -12,7 +12,11 @@ export default function MemoryMap() {
     async function load() {
       await initDatabase();
       const data = await getEvents();
-      setEvents(data.filter((e) => e.latitude && e.longitude));
+      setEvents(
+        data.filter(
+          (e) => e.showOnMap !== false && e.latitude && e.longitude,
+        ),
+      );
       setLoading(false);
     }
     load();
