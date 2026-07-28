@@ -50,44 +50,49 @@ export default function Timeline() {
   }
 
   async function handleSubmit(form: EventFormData) {
-    const input = {
-      title: form.title,
-      content: form.content,
-      date: form.date,
-      location: form.location || undefined,
-      latitude: form.latitude ? parseFloat(form.latitude) : undefined,
-      longitude: form.longitude ? parseFloat(form.longitude) : undefined,
-      tags: form.tags || undefined,
-      coverImage: form.coverImage || undefined,
-      showOnMap: form.showOnMap,
-    };
+    try {
+      const input = {
+        title: form.title,
+        content: form.content,
+        date: form.date,
+        location: form.location || undefined,
+        latitude: form.latitude ? parseFloat(form.latitude) : undefined,
+        longitude: form.longitude ? parseFloat(form.longitude) : undefined,
+        tags: form.tags || undefined,
+        coverImage: form.coverImage || undefined,
+        showOnMap: form.showOnMap,
+      };
 
-    if (editingEvent) {
-      await updateEvent(editingEvent.id, input);
-      await clearMediaByEventId(editingEvent.id);
-      for (const item of form.media) {
-        await createMedia({
-          eventId: editingEvent.id,
-          type: item.type,
-          path: item.path,
-          caption: item.caption,
-        });
+      if (editingEvent) {
+        await updateEvent(editingEvent.id, input);
+        await clearMediaByEventId(editingEvent.id);
+        for (const item of form.media) {
+          await createMedia({
+            eventId: editingEvent.id,
+            type: item.type,
+            path: item.path,
+            caption: item.caption,
+          });
+        }
+      } else {
+        const eventId = await createEvent(input);
+        for (const item of form.media) {
+          await createMedia({
+            eventId: Number(eventId),
+            type: item.type,
+            path: item.path,
+            caption: item.caption,
+          });
+        }
       }
-    } else {
-      const eventId = await createEvent(input);
-      for (const item of form.media) {
-        await createMedia({
-          eventId: Number(eventId),
-          type: item.type,
-          path: item.path,
-          caption: item.caption,
-        });
-      }
+
+      setIsModalOpen(false);
+      setEditingEvent(null);
+      await refreshEvents();
+    } catch (e) {
+      console.error("保存记录失败:", e);
+      alert("保存失败: " + (e instanceof Error ? e.message : String(e)));
     }
-
-    setIsModalOpen(false);
-    setEditingEvent(null);
-    await refreshEvents();
   }
 
   async function handleDelete(id: number) {
@@ -119,7 +124,12 @@ export default function Timeline() {
   }
 
   return (
-    <div className="h-full flex flex-col p-8 print:p-0 print:bg-white print:h-auto">
+    <div className="h-full flex flex-col p-8 print:p-0 print:bg-white print:h-auto print-content">
+      <div className="hidden print:block text-center mb-8">
+        <h1 className="text-3xl font-bold text-rose-500">LoveMemo</h1>
+        <p className="text-slate-500 mt-1">恋爱纪念册</p>
+      </div>
+
       <div className="flex items-center justify-between mb-8 print:hidden">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">恋爱时间线</h2>
@@ -142,11 +152,6 @@ export default function Timeline() {
             <span>新增记录</span>
           </button>
         </div>
-      </div>
-
-      <div className="hidden print:block mb-6 text-center">
-        <h1 className="text-3xl font-bold text-rose-600">LoveMemo 恋爱纪念册</h1>
-        <p className="text-slate-500 mt-2">记录属于我们的每一个重要时刻</p>
       </div>
 
       {events.length === 0 ? (
@@ -231,6 +236,8 @@ export default function Timeline() {
           </div>
         </div>
       )}
+
+      <div className="hidden print-footer">Created by LoveMemo</div>
 
       <Modal
         isOpen={isModalOpen}

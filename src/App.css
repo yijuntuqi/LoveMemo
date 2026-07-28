@@ -14,6 +14,39 @@
 }
 
 @layer utilities {
+  .map-3d-container {
+    border-radius: 1rem;
+    overflow: hidden;
+  }
+
+  .map-tiles {
+    filter: saturate(1.15) contrast(1.02) brightness(1.05);
+  }
+
+  .love-marker {
+    background: transparent;
+    border: none;
+  }
+
+  .love-marker-pin {
+    width: 40px;
+    height: 40px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center bottom;
+    filter: drop-shadow(0 4px 6px rgba(225, 29, 72, 0.35));
+    animation: love-bounce 2s ease-in-out infinite;
+  }
+
+  @keyframes love-bounce {
+    0%, 100% {
+      transform: translateY(0) scale(1);
+    }
+    50% {
+      transform: translateY(-6px) scale(1.08);
+    }
+  }
+
   .scrollbar-thin::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -33,18 +66,36 @@
 }
 
 @media print {
-  /* 隐藏浏览器默认页眉页脚 */
+  /* 彻底去除浏览器默认页眉页脚（标题、URL、时间等） */
   @page {
-    margin: 1.5cm 1.5cm 2cm 1.5cm;
-    @bottom-center {
-      content: "created by LoveMemo";
-      font-size: 10pt;
-      color: #94a3b8;
-    }
+    margin: 0;
+    size: auto;
   }
 
+  html,
   body {
     background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* 打印内容边距 */
+  .print-content {
+    padding: 1.5cm 1.5cm 2cm 1.5cm !important;
+  }
+
+  /* 固定页脚：Created by LoveMemo */
+  .print-footer {
+    display: block !important;
+    position: fixed;
+    bottom: 0.8cm;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 10pt;
+    color: #94a3b8;
   }
 
   /* 隐藏应用本身不适合打印的元素 */

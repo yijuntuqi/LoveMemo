@@ -119,13 +119,18 @@ export default function Anniversaries() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (editing) {
-      await updateAnniversary(editing.id, form);
-    } else {
-      await createAnniversary(form);
+    try {
+      if (editing) {
+        await updateAnniversary(editing.id, form);
+      } else {
+        await createAnniversary(form);
+      }
+      setIsOpen(false);
+      await refresh();
+    } catch (e) {
+      console.error("保存纪念日失败:", e);
+      alert("保存失败: " + (e instanceof Error ? e.message : String(e)));
     }
-    setIsOpen(false);
-    await refresh();
   }
 
   async function handleDelete(id: number) {

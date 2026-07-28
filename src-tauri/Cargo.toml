@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset", "devtools"] }
 tauri-plugin-opener = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tauri-plugin-fs = "2"
@@ -26,9 +26,17 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
+reqwest = { version = "0.12", features = ["json"] }
+urlencoding = "2"
+tauri-plugin-http = "2.5.9"
+
+[profile.dev]
+# 调试模式下禁用增量编译的 hard-link 优化，避免某些文件系统报错 1117
+incremental = false
 
 [profile.release]
 # 降低 release 编译内存占用，避免 rustc 被系统终止
+incremental = false
 opt-level = 2
 lto = false
 codegen-units = 16
