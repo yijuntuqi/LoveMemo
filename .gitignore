@@ -12,6 +12,20 @@ dist
 dist-ssr
 *.local
 
+# Rust build artifacts
+target/
+
+# Environment files (contains secrets)
+.env
+.env.*
+
+# Database files
+*.db
+*.db-journal
+
+# Tauri bundle output
+src-tauri/target/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

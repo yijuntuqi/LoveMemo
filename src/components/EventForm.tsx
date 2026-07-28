@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Sparkles, ImagePlus, X, MapPin, Search, Loader2 } from "lucide-react";
-import { pickMediaFile, importMedia, getMediaUrl, isVideo } from "../utils/media";
-import { generateMemoryText } from "../utils/ai";
-import { searchLocation, type LocationResult } from "../utils/location";
+import { pickMediaFile, importMediaWithSettings, getMediaUrl, isVideo } from "../utils/media";
+import { generateMemoryText, isPremiumUser } from "../utils/ai";
+import { searchLocation, type LocationResult, formatCoordinate } from "../utils/location";
 import { getSettings } from "../db";
 import type { MemoryEvent, AppSettings } from "../types";
 
@@ -44,6 +44,7 @@ export default function EventForm({
     showOnMap: true,
     media: [],
   });
+  const [tempMediaFiles, setTempMediaFiles] = useState<{ original: string }[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({});
   const [searchQuery, setSearchQuery] = useState("");
@@ -94,37 +95,61 @@ export default function EventForm({
   async function handleAddMedia() {
     const path = await pickMediaFile();
     if (!path) return;
-    try {
-      const importedPath = await importMedia(path);
-      const type = isVideo(importedPath) ? "video" : "image";
-      const newMedia = { path: importedPath, type: type as "image" | "video", caption: "" };
-      setForm((prev) => ({
-        ...prev,
-        media: [...prev.media, newMedia],
-        coverImage: prev.coverImage || importedPath,
-      }));
-    } catch (e) {
-      alert("导入媒体失败: " + e);
-    }
+    // 先使用原始路径预览，等保存时再统一复制
+    setTempMediaFiles((prev) => [...prev, { original: path }]);
+    const type = isVideo(path) ? "video" : "image";
+    const newMedia = { path, type: type as "image" | "video", caption: "" };
+    setForm((prev) => ({
+      ...prev,
+      media: [...prev.media, newMedia],
+      coverImage: prev.coverImage || path,
+    }));
   }
 
   function removeMedia(index: number) {
     setForm((prev) => {
+      const removed = prev.media[index];
       const next = prev.media.filter((_, i) => i !== index);
+      if (removed) {
+        setTempMediaFiles((tmp) => tmp.filter((t) => t.original !== removed.path));
+      }
       return {
         ...prev,
         media: next,
         coverImage:
-          prev.coverImage === prev.media[index]?.path
+          prev.coverImage === removed?.path
             ? next[0]?.path || ""
             : prev.coverImage,
       };
     });
   }
 
+  async function finalizeMedia(): Promise<EventFormData["media"]> {
+    const finalized: EventFormData["media"] = [];
+    for (const item of form.media) {
+      const temp = tempMediaFiles.find((t) => t.original === item.path);
+      if (temp) {
+        try {
+          const importedPath = await importMediaWithSettings(item.path);
+          finalized.push({ ...item, path: importedPath });
+        } catch (e) {
+          alert("保存媒体失败: " + e);
+          throw e;
+        }
+      } else {
+        finalized.push(item);
+      }
+    }
+    return finalized;
+  }
+
   async function handleAiGenerate() {
     if (!form.title && !form.content) {
       alert("请先填写标题或内容");
+      return;
+    }
+    if (!isPremiumUser(settings)) {
+      alert("AI 润色是会员专属功能\n\n开通会员即可享受：\n• 无限次 AI 文案润色\n• 高级纪念册模板\n• 无水印导出\n\n前往「设置 → 会员中心」扫码支付，获取激活码后输入即可开通。");
       return;
     }
     setAiLoading(true);
@@ -133,7 +158,12 @@ export default function EventForm({
       const text = await generateMemoryText(prompt, settings);
       updateField("content", text);
     } catch (e) {
-      alert("AI 生成失败: " + e);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("会员") || msg.includes("权限") || msg.includes("Forbidden")) {
+        alert("AI 润色是会员专属功能，请前往「设置 → 会员中心」开通会员。");
+      } else {
+        alert("AI 生成失败: " + msg);
+      }
     } finally {
       setAiLoading(false);
     }
@@ -144,7 +174,7 @@ export default function EventForm({
     setSearchLoading(true);
     setSearchResults([]);
     try {
-      const results = await searchLocation(searchQuery.trim());
+      const results = await searchLocation(searchQuery.trim(), settings);
       setSearchResults(results);
       if (results.length === 0) {
         alert("未找到相关地点，请尝试更具体的关键词");
@@ -167,9 +197,14 @@ export default function EventForm({
     setSearchQuery("");
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSubmit(form);
+    try {
+      const finalizedMedia = await finalizeMedia();
+      onSubmit({ ...form, media: finalizedMedia });
+    } catch {
+      // finalizeMedia 已弹窗
+    }
   }
 
   return (
@@ -228,7 +263,7 @@ export default function EventForm({
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleSearchLocation())}
               className="w-full pl-10 pr-4 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
-              placeholder="输入地点名称搜索（免费，来自 OpenStreetMap）"
+              placeholder="输入地点名称搜索（支持全球地址）"
             />
           </div>
           <button
@@ -279,12 +314,11 @@ export default function EventForm({
             经度
           </label>
           <input
-            type="number"
-            step="any"
-            value={form.longitude}
-            onChange={(e) => updateField("longitude", e.target.value)}
-            className="w-full px-4 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
-            placeholder="113.5"
+            type="text"
+            value={formatCoordinate(form.longitude, "lng")}
+            readOnly
+            className="w-full px-4 py-2 rounded-xl border border-rose-200 bg-slate-50 text-slate-600 focus:outline-none"
+            placeholder="自动填充"
           />
         </div>
         <div>
@@ -292,12 +326,11 @@ export default function EventForm({
             纬度
           </label>
           <input
-            type="number"
-            step="any"
-            value={form.latitude}
-            onChange={(e) => updateField("latitude", e.target.value)}
-            className="w-full px-4 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
-            placeholder="22.2"
+            type="text"
+            value={formatCoordinate(form.latitude, "lat")}
+            readOnly
+            className="w-full px-4 py-2 rounded-xl border border-rose-200 bg-slate-50 text-slate-600 focus:outline-none"
+            placeholder="自动填充"
           />
         </div>
       </div>

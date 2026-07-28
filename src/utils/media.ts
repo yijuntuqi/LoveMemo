@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { getSettings } from "../db";
 
 export async function pickMediaFile(): Promise<string | null> {
   const selected = await open({
@@ -15,8 +16,13 @@ export async function pickMediaFile(): Promise<string | null> {
   return selected || null;
 }
 
-export async function importMedia(sourcePath: string): Promise<string> {
-  return await invoke("import_media", { sourcePath });
+export async function importMedia(sourcePath: string, targetDir?: string): Promise<string> {
+  return await invoke("import_media", { sourcePath, targetDir });
+}
+
+export async function importMediaWithSettings(sourcePath: string): Promise<string> {
+  const settings = await getSettings();
+  return await importMedia(sourcePath, settings.mediaStoragePath);
 }
 
 export function getMediaUrl(filePath: string): string {

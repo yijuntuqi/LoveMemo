@@ -6,6 +6,7 @@ import Gallery from "./pages/Gallery";
 import MemoryMap from "./pages/MemoryMap";
 import Anniversaries from "./pages/Anniversaries";
 import SettingsPage from "./pages/Settings";
+import AuthGate from "./components/AuthGate";
 import { getSettings } from "./db";
 import type { AppSettings } from "./types";
 
@@ -14,6 +15,14 @@ function App() {
 
   useEffect(() => {
     getSettings().then((s) => setSettings(s as AppSettings));
+
+    function refreshSettings() {
+      getSettings().then((s) => setSettings(s as AppSettings));
+    }
+
+    window.addEventListener("lovememo-settings-changed", refreshSettings);
+    return () =>
+      window.removeEventListener("lovememo-settings-changed", refreshSettings);
   }, []);
 
   const navItems = [
@@ -82,13 +91,15 @@ function App() {
       </aside>
 
       <main className="flex-1 overflow-hidden print:overflow-visible print:h-auto">
-        <Routes>
-          <Route path="/" element={<Timeline />} />
-          <Route path="/gallery" element={<Gallery />} />
-          <Route path="/map" element={<MemoryMap />} />
-          <Route path="/anniversaries" element={<Anniversaries />} />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Routes>
+        <AuthGate>
+          <Routes>
+            <Route path="/" element={<Timeline />} />
+            <Route path="/gallery" element={<Gallery />} />
+            <Route path="/map" element={<MemoryMap />} />
+            <Route path="/anniversaries" element={<Anniversaries />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Routes>
+        </AuthGate>
       </main>
     </div>
   );
