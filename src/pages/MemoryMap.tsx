@@ -6,10 +6,13 @@ import {
   Map,
   Search,
   X,
+  Download,
 } from "lucide-react";
+import html2canvas from "html2canvas";
 import { initDatabase, getEvents, getSettings } from "../db";
-import { searchLocation } from "../utils/api";
-import type { MemoryEvent, AppSettings } from "../types";
+import { fetchUserInfo, searchLocation } from "../utils/api";
+import { requirePremium } from "../utils/membership";
+import type { MemoryEvent, AppSettings, UserInfo } from "../types";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -66,6 +69,8 @@ export default function MemoryMap() {
   const [mapMode, setMapMode] = useState<MapMode>("auto");
   const [tileError, setTileError] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({});
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<
     { name: string; address: string; latitude: number; longitude: number }[]
@@ -86,6 +91,14 @@ export default function MemoryMap() {
         ),
       );
       setSettings(s as AppSettings);
+      if (s.authToken) {
+        try {
+          const user = await fetchUserInfo(s as AppSettings);
+          setUserInfo(user);
+        } catch {
+          // ignore
+        }
+      }
       setLoading(false);
     }
     load();
@@ -221,6 +234,65 @@ export default function MemoryMap() {
     setShowSearchPanel(false);
   }
 
+  async function handleExportMap() {
+    if (!mapRef.current) return;
+
+    // 刷新最新会员状态
+    let latestUser = userInfo;
+    if (settings.authToken) {
+      try {
+        latestUser = await fetchUserInfo(settings);
+        setUserInfo(latestUser);
+      } catch {
+        // ignore
+      }
+    }
+
+    const isPremium = latestUser?.membership_type === "premium";
+    if (!isPremium && !requirePremium(latestUser, "导出恋爱地图图片")) {
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const canvas = await html2canvas(mapRef.current, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+      });
+
+      // 非会员添加右下角水印
+      if (!isPremium) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          const text = "LoveMemo";
+          const fontSize = Math.round(canvas.width / 25);
+          ctx.font = `bold ${fontSize}px "Microsoft YaHei", sans-serif`;
+          ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+          ctx.strokeStyle = "rgba(244, 63, 94, 0.5)";
+          ctx.lineWidth = Math.max(1, fontSize / 20);
+          const metrics = ctx.measureText(text);
+          const padding = fontSize;
+          const x = canvas.width - metrics.width - padding;
+          const y = canvas.height - padding / 2;
+          ctx.strokeText(text, x, y);
+          ctx.fillText(text, x, y);
+        }
+      }
+
+      const link = document.createElement("a");
+      link.download = `LoveMemo_恋爱地图_${Date.now()}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    } catch (err) {
+      alert("导出地图图片失败: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -244,9 +316,18 @@ export default function MemoryMap() {
             <Search className="w-4 h-4" />
             搜索地名
           </button>
+          <button
+            onClick={handleExportMap}
+            disabled={exporting}
+            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors shadow-sm text-sm disabled:opacity-50"
+            title="导出当前地图为高清图片"
+          >
+            <Download className="w-4 h-4" />
+            {exporting ? "导出中..." : "导出图片"}
+          </button>
           {events.length > 0 && (
             <div className="flex items-center bg-white rounded-xl border border-rose-100 p-1 shadow-sm">
-            {(["auto", "china", "world"] as MapMode[]).map((mode) => (
+            {(["auto", "china"] as MapMode[]).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setMapMode(mode)}
