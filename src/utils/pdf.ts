@@ -1,155 +1,85 @@
+import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
-import type { MemoryEvent } from "../types";
 
 export interface PdfOptions {
   coupleName?: string;
   startDate?: string;
   daysTogether?: number | null;
-  events: MemoryEvent[];
 }
 
-function hexToRgb(hex: string) {
-  const clean = hex.replace("#", "");
-  const r = parseInt(clean.substring(0, 2), 16);
-  const g = parseInt(clean.substring(2, 4), 16);
-  const b = parseInt(clean.substring(4, 6), 16);
-  return [r, g, b] as const;
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const ROSE = "#f43f5e";
-const PINK = "#ec4899";
-const SLATE = "#334155";
-const GREY = "#64748b";
+export async function exportElementToPdf(element: HTMLElement, options?: PdfOptions) {
+  // 等待页面字体加载完成，避免截图时中文渲染为默认字体/乱码
+  if (document.fonts && document.fonts.ready) {
+    await document.fonts.ready;
+  }
 
-export async function generateMemoryBookPdf(options: PdfOptions) {
-  const doc = new jsPDF("p", "mm", "a4");
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 20;
-  const contentWidth = pageWidth - margin * 2;
+  // 深度克隆要导出的节点
+  const clone = element.cloneNode(true) as HTMLElement;
+  clone.style.margin = "0";
+  clone.style.padding = "40px";
+  clone.style.width = "794px"; // A4 96dpi
+  clone.style.boxSizing = "border-box";
+  clone.style.fontFamily =
+    '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif';
+  clone.style.color = "#1f2937";
+  clone.style.backgroundColor = "#ffffff";
 
-  // 封面
-  const rose = hexToRgb(ROSE);
-  const pink = hexToRgb(PINK);
+  // 临时容器：放在可视区域内但层级最低，确保 html2canvas 能正常渲染
+  const wrapper = document.createElement("div");
+  wrapper.style.position = "fixed";
+  wrapper.style.left = "0";
+  wrapper.style.top = "0";
+  wrapper.style.width = "794px";
+  wrapper.style.zIndex = "-9999";
+  wrapper.style.opacity = "0";
+  wrapper.style.pointerEvents = "none";
+  wrapper.appendChild(clone);
+  document.body.appendChild(wrapper);
 
-  // 渐变背景效果：用色块模拟
-  doc.setFillColor(rose[0], rose[1], rose[2]);
-  doc.rect(0, 0, pageWidth, pageHeight, "F");
-  doc.setFillColor(pink[0], pink[1], pink[2]);
-  doc.circle(pageWidth, 0, 120, "F");
-  doc.setFillColor(255, 255, 255);
-  doc.circle(0, pageHeight, 100, "F");
+  // 强制重排并重绘
+  wrapper.getBoundingClientRect();
+  await wait(200);
 
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(32);
-  doc.setFont("helvetica", "bold");
-  doc.text("LoveMemo", pageWidth / 2, pageHeight / 2 - 30, { align: "center" });
-
-  doc.setFontSize(16);
-  doc.setFont("helvetica", "normal");
-  doc.text("恋爱纪念册", pageWidth / 2, pageHeight / 2 - 18, { align: "center" });
-
-  if (options.coupleName) {
-    doc.setFontSize(24);
-    doc.setFont("helvetica", "bold");
-    doc.text(options.coupleName, pageWidth / 2, pageHeight / 2 + 10, {
-      align: "center",
+  try {
+    const canvas = await html2canvas(clone, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: "#ffffff",
+      width: 794,
+      windowWidth: 794,
+      logging: false,
     });
-  }
 
-  if (options.startDate && options.daysTogether !== null) {
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "normal");
-    doc.text(
-      `从 ${options.startDate} 至今，已相恋 ${options.daysTogether} 天`,
-      pageWidth / 2,
-      pageHeight / 2 + 22,
-      { align: "center" },
-    );
-  }
+    const imgData = canvas.toDataURL("image/png");
+    const pdf = new jsPDF("p", "mm", "a4");
+    const pageWidth = 210;
+    const pageHeight = 297;
+    const imgWidth = pageWidth;
+    const imgHeight = (canvas.height * pageWidth) / canvas.width;
 
-  doc.setFontSize(10);
-  doc.text(
-    `共记录 ${options.events.length} 个故事`,
-    pageWidth / 2,
-    pageHeight / 2 + 32,
-    { align: "center" },
-    );
+    let heightLeft = imgHeight;
+    let position = 0;
 
-  // 故事页
-  const slate = hexToRgb(SLATE);
-  const grey = hexToRgb(GREY);
+    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
 
-  for (let i = 0; i < options.events.length; i++) {
-    const event = options.events[i];
-    doc.addPage();
-
-    // 页眉装饰线
-    doc.setDrawColor(rose[0], rose[1], rose[2]);
-    doc.setLineWidth(1);
-    doc.line(margin, 18, pageWidth - margin, 18);
-
-    // 日期
-    doc.setTextColor(grey[0], grey[1], grey[2]);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(event.date, margin, 30);
-
-    // 标题
-    doc.setTextColor(slate[0], slate[1], slate[2]);
-    doc.setFontSize(18);
-    doc.setFont("helvetica", "bold");
-    const titleLines = doc.splitTextToSize(event.title, contentWidth);
-    doc.text(titleLines, margin, 38);
-
-    let y = 38 + titleLines.length * 7 + 6;
-
-    // 地点
-    if (event.location) {
-      doc.setTextColor(grey[0], grey[1], grey[2]);
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "italic");
-      doc.text(`地点：${event.location}`, margin, y);
-      y += 8;
+    while (heightLeft > 0) {
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
     }
 
-    // 内容
-    if (event.content) {
-      doc.setTextColor(slate[0], slate[1], slate[2]);
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "normal");
-      const contentLines = doc.splitTextToSize(event.content, contentWidth);
-      doc.text(contentLines, margin, y);
-      y += contentLines.length * 5 + 8;
-    }
-
-    // 标签
-    if (event.tags) {
-      doc.setTextColor(rose[0], rose[1], rose[2]);
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      const tagText = event.tags
-        .split(/[,，]/)
-        .map((t) => `#${t.trim()}`)
-        .join("  ");
-      const tagLines = doc.splitTextToSize(tagText, contentWidth);
-      doc.text(tagLines, margin, y);
-    }
-
-    // 页脚
-    doc.setTextColor(grey[0], grey[1], grey[2]);
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.text(
-      `LoveMemo · 第 ${i + 1} / ${options.events.length} 页`,
-      pageWidth / 2,
-      pageHeight - 12,
-      { align: "center" },
-    );
+    const fileName = options?.coupleName
+      ? `LoveMemo_${options.coupleName}.pdf`
+      : "LoveMemo_纪念册.pdf";
+    pdf.save(fileName);
+  } finally {
+    document.body.removeChild(wrapper);
   }
-
-  const fileName = options.coupleName
-    ? `LoveMemo_${options.coupleName}.pdf`
-    : "LoveMemo_纪念册.pdf";
-  doc.save(fileName);
 }

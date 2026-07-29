@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Plus,
   Heart,
@@ -10,6 +10,7 @@ import {
   Search,
   X,
   FileDown,
+  Crown,
 } from "lucide-react";
 import {
   initDatabase,
@@ -25,8 +26,10 @@ import {
 import Modal from "../components/Modal";
 import EventForm from "../components/EventForm";
 import { getMediaUrl } from "../utils/media";
-import { generateMemoryBookPdf } from "../utils/pdf";
-import type { MemoryEvent, MediaItem, AppSettings } from "../types";
+import { exportElementToPdf } from "../utils/pdf";
+import { fetchUserInfo } from "../utils/api";
+import { requirePremium } from "../utils/membership";
+import type { MemoryEvent, MediaItem, AppSettings, UserInfo } from "../types";
 import type { EventFormData } from "../components/EventForm";
 
 export default function Timeline() {
@@ -40,6 +43,8 @@ export default function Timeline() {
   const [dateTo, setDateTo] = useState("");
   const [selectedTag, setSelectedTag] = useState("");
   const [settings, setSettings] = useState<AppSettings>({});
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -47,6 +52,14 @@ export default function Timeline() {
       const [data, s] = await Promise.all([getEvents(), getSettings()]);
       setEvents(data);
       setSettings(s as AppSettings);
+      if (s.authToken) {
+        try {
+          const user = await fetchUserInfo(s as AppSettings);
+          setUserInfo(user);
+        } catch {
+          // ignore
+        }
+      }
 
       const map: Record<number, MediaItem[]> = {};
       for (const event of data) {
@@ -174,20 +187,31 @@ export default function Timeline() {
   }
 
   async function handleExportPdf() {
-    if (events.length === 0) {
-      alert("还没有记录，无法导出 PDF");
+    // 刷新最新会员状态，避免激活后仍被旧缓存拦截
+    let latestUser = userInfo;
+    if (settings.authToken) {
+      try {
+        latestUser = await fetchUserInfo(settings);
+        setUserInfo(latestUser);
+      } catch {
+        // 失败时继续使用已有 userInfo
+      }
+    }
+    if (!requirePremium(latestUser, "导出 PDF 纪念册")) return;
+    if (filteredEvents.length === 0) {
+      alert("没有可导出的记录");
       return;
     }
+    if (!printRef.current) return;
     try {
       const start = settings.startDate ? new Date(settings.startDate) : null;
       const days = start
         ? Math.floor((Date.now() - start.getTime()) / (1000 * 60 * 60 * 24))
         : null;
-      await generateMemoryBookPdf({
+      await exportElementToPdf(printRef.current, {
         coupleName: settings.coupleName,
         startDate: settings.startDate,
         daysTogether: days,
-        events: filteredEvents,
       });
     } catch (e) {
       alert("导出 PDF 失败: " + (e instanceof Error ? e.message : String(e)));
@@ -218,8 +242,9 @@ export default function Timeline() {
           <button
             onClick={handleExportPdf}
             className="flex items-center gap-2 px-5 py-2.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors shadow-sm"
-            title="导出 PDF 文件"
+            title="会员专属：导出 PDF 文件"
           >
+            <Crown className="w-4 h-4 text-amber-500" />
             <FileDown className="w-5 h-5" />
             <span>导出 PDF</span>
           </button>
@@ -384,6 +409,70 @@ export default function Timeline() {
       )}
 
       <div className="hidden print-footer">Created by LoveMemo</div>
+
+      {/* PDF 导出专用容器 */}
+      <div
+        ref={printRef}
+        className="fixed left-[-9999px] top-0 w-[794px] bg-white p-10 text-slate-800"
+        style={{ zIndex: -1 }}
+      >
+        <div className="text-center mb-10 pb-8 border-b-2 border-rose-200">
+          <h1 className="text-4xl font-bold text-rose-500">LoveMemo</h1>
+          <p className="text-xl mt-3 font-medium">
+            {settings.coupleName || "恋爱纪念册"}
+          </p>
+          {settings.startDate && (
+            <p className="text-sm text-slate-500 mt-2">
+              从 {settings.startDate} 开始记录
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-8">
+          {filteredEvents.map((event) => (
+            <div key={event.id} className="pb-6 border-b border-rose-100">
+              <div className="text-sm text-rose-500 font-medium mb-1">
+                {event.date}
+              </div>
+              <h3 className="text-lg font-bold text-slate-800">{event.title}</h3>
+              {event.content && (
+                <p className="text-sm text-slate-600 mt-2 whitespace-pre-line">
+                  {event.content}
+                </p>
+              )}
+              {event.location && (
+                <p className="text-xs text-slate-400 mt-2">地点：{event.location}</p>
+              )}
+              {event.tags && (
+                <p className="text-xs text-rose-400 mt-2">
+                  {event.tags
+                    .split(/[,，]/)
+                    .map((t) => `#${t.trim()}`)
+                    .join(" ")}
+                </p>
+              )}
+              {mediaMap[event.id]?.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {mediaMap[event.id].map((item, idx) =>
+                    item.type === "image" ? (
+                      <img
+                        key={idx}
+                        src={getMediaUrl(item.path)}
+                        alt=""
+                        className="w-24 h-24 object-cover rounded-lg border border-rose-100"
+                      />
+                    ) : null,
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="text-center text-xs text-slate-400 mt-10 pt-6 border-t border-rose-100">
+          Created by LoveMemo · {new Date().toLocaleDateString()}
+        </div>
+      </div>
 
       <Modal
         isOpen={isModalOpen}

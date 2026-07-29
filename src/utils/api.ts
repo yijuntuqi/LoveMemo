@@ -68,3 +68,29 @@ export async function activateMembership(
   if (!res.ok) throw new Error(data.error || "激活失败");
   return data;
 }
+
+export interface GeocodeResult {
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface GeocodeResponse {
+  results: GeocodeResult[];
+}
+
+export async function searchLocation(
+  settings: AppSettings,
+  address: string,
+): Promise<GeocodeResponse> {
+  const res = await fetch(
+    `${getServerUrl(settings)}/map/geocode?address=${encodeURIComponent(address)}`,
+    {
+      headers: getHeaders(settings),
+    },
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "搜索地点失败");
+  return data;
+}
