@@ -28,14 +28,14 @@ export async function exportElementToPdf(element: HTMLElement, options?: PdfOpti
   clone.style.color = "#1f2937";
   clone.style.backgroundColor = "#ffffff";
 
-  // 临时容器：放在可视区域内但层级最低，确保 html2canvas 能正常渲染
+  // 临时容器：放在屏幕外但 opacity 为 1，确保 html2canvas 能正常渲染
   const wrapper = document.createElement("div");
   wrapper.style.position = "fixed";
-  wrapper.style.left = "0";
+  wrapper.style.left = "-9999px";
   wrapper.style.top = "0";
   wrapper.style.width = "794px";
   wrapper.style.zIndex = "-9999";
-  wrapper.style.opacity = "0";
+  wrapper.style.opacity = "1";
   wrapper.style.pointerEvents = "none";
   wrapper.appendChild(clone);
   document.body.appendChild(wrapper);
