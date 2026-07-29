@@ -179,6 +179,14 @@ pub async fn register(
         )
     })?;
 
+    // 如果用户填写了邮箱，异步发送欢迎邮件，不影响注册响应
+    if let Some(email) = user.email.clone() {
+        let phone = user.phone.clone();
+        tokio::spawn(async move {
+            crate::email::send_welcome_email(&email, &phone).await;
+        });
+    }
+
     Ok(Json(AuthResponse { token, user }))
 }
 
