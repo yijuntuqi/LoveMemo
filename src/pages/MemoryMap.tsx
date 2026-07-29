@@ -8,7 +8,7 @@ import {
   X,
   Download,
 } from "lucide-react";
-import html2canvas from "html2canvas";
+import { exportToPng } from "../utils/exportImage";
 import { initDatabase, getEvents, getSettings } from "../db";
 import { fetchUserInfo, searchLocation } from "../utils/api";
 import { requirePremium } from "../utils/membership";
@@ -255,31 +255,40 @@ export default function MemoryMap() {
 
     setExporting(true);
     try {
-      const canvas = await html2canvas(mapRef.current, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: "#ffffff",
-        logging: false,
+      const dataUrl = await exportToPng(mapRef.current, {
+        quality: 1,
+        pixelRatio: 2,
+        cacheBust: true,
       });
+
+      const img = new Image();
+      img.src = dataUrl;
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("图片加载失败"));
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("无法创建 canvas 上下文");
+      ctx.drawImage(img, 0, 0);
 
       // 非会员添加右下角水印
       if (!isPremium) {
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          const text = "LoveMemo";
-          const fontSize = Math.round(canvas.width / 25);
-          ctx.font = `bold ${fontSize}px "Microsoft YaHei", sans-serif`;
-          ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-          ctx.strokeStyle = "rgba(244, 63, 94, 0.5)";
-          ctx.lineWidth = Math.max(1, fontSize / 20);
-          const metrics = ctx.measureText(text);
-          const padding = fontSize;
-          const x = canvas.width - metrics.width - padding;
-          const y = canvas.height - padding / 2;
-          ctx.strokeText(text, x, y);
-          ctx.fillText(text, x, y);
-        }
+        const text = "LoveMemo";
+        const fontSize = Math.round(canvas.width / 25);
+        ctx.font = `bold ${fontSize}px "Microsoft YaHei", sans-serif`;
+        ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+        ctx.strokeStyle = "rgba(244, 63, 94, 0.5)";
+        ctx.lineWidth = Math.max(1, fontSize / 20);
+        const metrics = ctx.measureText(text);
+        const padding = fontSize;
+        const x = canvas.width - metrics.width - padding;
+        const y = canvas.height - padding / 2;
+        ctx.strokeText(text, x, y);
+        ctx.fillText(text, x, y);
       }
 
       const link = document.createElement("a");
