@@ -18,10 +18,13 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost blob: data: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.is.autonavi.com https://webrd*.is.autonavi.com https://wprd*.is.autonavi.com; media-src 'self' asset: http://asset.localhost blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http: https:;",
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost https://asset.localhost blob: data: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.is.autonavi.com https://webrd*.is.autonavi.com https://wprd*.is.autonavi.com; media-src 'self' asset: http://asset.localhost https://asset.localhost blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http: https:;",
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/**", "$APPLOCALDATA/**", "$DOWNLOAD/**", "$DOCUMENT/**"]
+        "scope": {
+          "requireLiteralLeadingDot": false,
+          "allow": ["**/*"]
+        }
       }
     }
   },
