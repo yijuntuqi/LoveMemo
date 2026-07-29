@@ -20,8 +20,6 @@
     "@tauri-apps/plugin-sql": "^2.4.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
-    "html2canvas": "^1.4.1",
-    "jspdf": "^4.2.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.26.0",
     "react": "^19.1.0",

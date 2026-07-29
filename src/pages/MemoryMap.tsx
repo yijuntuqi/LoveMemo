@@ -6,13 +6,10 @@ import {
   Map,
   Search,
   X,
-  Crown,
 } from "lucide-react";
-import html2canvas from "html2canvas";
 import { initDatabase, getEvents, getSettings } from "../db";
-import { fetchUserInfo, searchLocation } from "../utils/api";
-import { requirePremium } from "../utils/membership";
-import type { MemoryEvent, AppSettings, UserInfo } from "../types";
+import { searchLocation } from "../utils/api";
+import type { MemoryEvent, AppSettings } from "../types";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -69,14 +66,12 @@ export default function MemoryMap() {
   const [mapMode, setMapMode] = useState<MapMode>("auto");
   const [tileError, setTileError] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({});
-  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<
     { name: string; address: string; latitude: number; longitude: number }[]
   >([]);
   const [searching, setSearching] = useState(false);
   const [showSearchPanel, setShowSearchPanel] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
@@ -91,14 +86,6 @@ export default function MemoryMap() {
         ),
       );
       setSettings(s as AppSettings);
-      if (s.authToken) {
-        try {
-          const user = await fetchUserInfo(s as AppSettings);
-          setUserInfo(user);
-        } catch {
-          // ignore
-        }
-      }
       setLoading(false);
     }
     load();
@@ -148,17 +135,35 @@ export default function MemoryMap() {
       }
     });
 
-    // 使用高德地图瓦片（国内可靠、明亮、中文标注）
-    L.tileLayer(
-      "https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}",
-      {
-        subdomains: "123",
-        maxZoom: 18,
+    // 根据模式选择底图：国内用高德，国外/全球用 OpenStreetMap
+    const allInChina = isAllInChina(events);
+    const effectiveMode =
+      mapMode === "auto" ? (allInChina ? "china" : "world") : mapMode;
+
+    if (effectiveMode === "china") {
+      L.tileLayer(
+        "https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}",
+        {
+          subdomains: "123",
+          maxZoom: 18,
+          minZoom: 3,
+          className: "map-tiles",
+        },
+      )
+        .on("tileerror", () => setTileError(true))
+        .addTo(map);
+    } else {
+      // OpenStreetMap 全球底图 + CartoDB 明亮注记，适合国外细节
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        subdomains: "abc",
+        maxZoom: 19,
+        minZoom: 1,
+        attribution: "&copy; OpenStreetMap",
         className: "map-tiles",
-      },
-    )
-      .on("tileerror", () => setTileError(true))
-      .addTo(map);
+      })
+        .on("tileerror", () => setTileError(true))
+        .addTo(map);
+    }
 
     // 清除旧标记
     markersLayer.clearLayers();
@@ -182,11 +187,6 @@ export default function MemoryMap() {
       marker.addTo(markersLayer);
       bounds.extend([lat, lng]);
     });
-
-    // 根据地点分布决定模式
-    const allInChina = isAllInChina(events);
-    const effectiveMode =
-      mapMode === "auto" ? (allInChina ? "china" : "world") : mapMode;
 
     if (events.length > 0 && bounds.isValid()) {
       map.fitBounds(bounds, { padding: [80, 80], maxZoom: 14 });
@@ -221,38 +221,6 @@ export default function MemoryMap() {
     setShowSearchPanel(false);
   }
 
-  async function handleExportMap() {
-    // 刷新最新会员状态
-    let latestUser = userInfo;
-    if (settings.authToken) {
-      try {
-        latestUser = await fetchUserInfo(settings);
-        setUserInfo(latestUser);
-      } catch {
-        // ignore
-      }
-    }
-    if (!requirePremium(latestUser, "导出高清恋爱地图")) return;
-    if (!mapRef.current) return;
-    setExporting(true);
-    try {
-      const canvas = await html2canvas(mapRef.current, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: "#ffffff",
-      });
-      const link = document.createElement("a");
-      link.download = `LoveMemo_恋爱地图_${Date.now()}.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "导出失败");
-    } finally {
-      setExporting(false);
-    }
-  }
-
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -275,15 +243,6 @@ export default function MemoryMap() {
           >
             <Search className="w-4 h-4" />
             搜索地名
-          </button>
-          <button
-            onClick={handleExportMap}
-            disabled={exporting || events.length === 0}
-            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors shadow-sm text-sm disabled:opacity-50"
-            title="会员专属"
-          >
-            <Crown className="w-4 h-4 text-amber-500" />
-            {exporting ? "导出中..." : "导出高清图"}
           </button>
           {events.length > 0 && (
             <div className="flex items-center bg-white rounded-xl border border-rose-100 p-1 shadow-sm">
