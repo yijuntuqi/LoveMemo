@@ -9,15 +9,6 @@ use sqlx::PgPool;
 
 use crate::auth::ErrorResponse;
 
-fn is_latin(c: char) -> bool {
-    // 简单判断：非中文、非日文、非韩文常见字符视为 latin/国际地址
-    !matches!(c as u32, 0x4E00..=0x9FFF | 0x3040..=0x309F | 0x30A0..=0x30FF | 0xAC00..=0xD7AF)
-}
-
-fn looks_like_international(address: &str) -> bool {
-    address.chars().any(|c| c.is_alphabetic() && is_latin(c))
-}
-
 #[derive(Deserialize)]
 pub struct GeocodeQuery {
     pub address: String,
@@ -48,44 +39,43 @@ pub async fn geocode(
 
     let mut results = Vec::new();
 
-    // 国际地址使用 Nominatim（OpenStreetMap）
-    if looks_like_international(&query.address) {
-        match geocode_nominatim(&query.address).await {
-            Ok(r) => results.extend(r),
-            Err(_) => {} // 国际源失败不阻断，继续尝试高德
+    // 并行搜索：高德（国内）和 Nominatim（国际），两个源同时请求，互不阻断
+    let (amap_res, nomi_res) = tokio::join!(
+        async {
+            if key.is_empty() {
+                None
+            } else {
+                geocode_amap(&key, &query.address).await.ok()
+            }
+        },
+        async {
+            geocode_nominatim(&query.address).await.ok()
+        },
+    );
+
+    // 先添加高德结果（国内地址更准确）
+    if let Some(r) = amap_res {
+        results.extend(r);
+    }
+
+    // 再添加 Nominatim 结果，去重
+    if let Some(r) = nomi_res {
+        for item in r {
+            let dup = results.iter().any(|e: &GeocodeResult| {
+                (e.latitude - item.latitude).abs() < 0.01
+                    && (e.longitude - item.longitude).abs() < 0.01
+            });
+            if !dup {
+                results.push(item);
+            }
         }
     }
 
-    // 高德搜索（国内为主，但也能搜部分国际地址）
-    if !key.is_empty() {
-        match geocode_amap(&key, &query.address).await {
-            Ok(r) => {
-                // 去重：高德和国际源可能有重复
-                for item in r {
-                    let dup = results.iter().any(|e: &GeocodeResult| {
-                        (e.latitude - item.latitude).abs() < 0.01
-                            && (e.longitude - item.longitude).abs() < 0.01
-                    });
-                    if !dup {
-                        results.push(item);
-                    }
-                }
-            }
-            Err(e) => {
-                // 高德也失败时，如果国际源没结果才报错
-                if results.is_empty() {
-                    return Err(e);
-                }
-            }
-        }
-    }
-
-    // 如果高德没配 key 且国际源也没结果
-    if results.is_empty() && key.is_empty() {
+    if results.is_empty() {
         return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
+            StatusCode::NOT_FOUND,
             Json(ErrorResponse {
-                error: "地图服务未配置".to_string(),
+                error: "未找到该地点，请尝试更具体的关键词".to_string(),
             }),
         ));
     }

@@ -224,10 +224,10 @@ export default function MemoryMap() {
         </div>
       ) : (
         <div
-          className="flex-1 rounded-2xl overflow-hidden border border-rose-100 shadow-xl map-3d-container"
-          style={{ minHeight: "500px" }}
+          className="flex-1 rounded-2xl overflow-hidden border border-rose-100 shadow-xl"
+          style={{ minHeight: "500px", height: "calc(100vh - 200px)" }}
         >
-          <div ref={mapRef} className="w-full h-full" />
+          <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
           {tileError && (
             <div className="absolute top-4 left-4 z-[1000] bg-white/90 backdrop-blur px-4 py-2 rounded-xl text-xs text-rose-600 shadow border border-rose-100">
               地图瓦片加载失败，请检查网络连接

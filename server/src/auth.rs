@@ -116,6 +116,31 @@ pub async fn register(
         ));
     }
 
+    // 先检查手机号是否已注册
+    let existing: Option<String> = sqlx::query_scalar(
+        "SELECT phone FROM lovememo_users WHERE phone = $1",
+    )
+    .bind(&req.phone)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("数据库查询失败: {}", e),
+            }),
+        )
+    })?;
+
+    if existing.is_some() {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                error: "该手机号已注册".to_string(),
+            }),
+        ));
+    }
+
     let password_hash = hash_password(&req.password).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -127,9 +152,8 @@ pub async fn register(
 
     let email_val = req.email.as_deref().filter(|e| !e.is_empty());
 
-    let user: UserInfo = match sqlx::query_as::<_, UserInfo>(
+    let user: UserInfo = sqlx::query_as::<_, UserInfo>(
         "INSERT INTO lovememo_users (phone, email, password_hash) VALUES ($1, $2, $3)
-         ON CONFLICT (phone) DO NOTHING
          RETURNING id, phone, email, membership_type, membership_expires_at",
     )
     .bind(&req.phone)
@@ -137,17 +161,14 @@ pub async fn register(
     .bind(&password_hash)
     .fetch_one(&pool)
     .await
-    {
-        Ok(user) => user,
-        Err(_) => {
-            return Err((
-                StatusCode::CONFLICT,
-                Json(ErrorResponse {
-                    error: "该手机号已注册".to_string(),
-                }),
-            ))
-        }
-    };
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("创建用户失败: {}", e),
+            }),
+        )
+    })?;
 
     let token = create_token(user.id).map_err(|e| {
         (
