@@ -1,7 +1,18 @@
-import { useEffect, useRef, useState } from "react";
-import { MapPin, Globe, Map } from "lucide-react";
-import { initDatabase, getEvents } from "../db";
-import type { MemoryEvent } from "../types";
+
+import { useEffect, useRef, useState } from "react";
+import {
+  MapPin,
+  Globe,
+  Map,
+  Search,
+  X,
+  Crown,
+} from "lucide-react";
+import html2canvas from "html2canvas";
+import { initDatabase, getEvents, getSettings } from "../db";
+import { fetchUserInfo, searchLocation } from "../utils/api";
+import { requirePremium } from "../utils/membership";
+import type { MemoryEvent, AppSettings, UserInfo } from "../types";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -57,6 +68,15 @@ export default function MemoryMap() {
   const [loading, setLoading] = useState(true);
   const [mapMode, setMapMode] = useState<MapMode>("auto");
   const [tileError, setTileError] = useState(false);
+  const [settings, setSettings] = useState<AppSettings>({});
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<
+    { name: string; address: string; latitude: number; longitude: number }[]
+  >([]);
+  const [searching, setSearching] = useState(false);
+  const [showSearchPanel, setShowSearchPanel] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
@@ -64,12 +84,21 @@ export default function MemoryMap() {
   useEffect(() => {
     async function load() {
       await initDatabase();
-      const data = await getEvents();
+      const [data, s] = await Promise.all([getEvents(), getSettings()]);
       setEvents(
         data.filter(
           (e) => e.showOnMap !== false && e.latitude && e.longitude,
         ),
       );
+      setSettings(s as AppSettings);
+      if (s.authToken) {
+        try {
+          const user = await fetchUserInfo(s as AppSettings);
+          setUserInfo(user);
+        } catch {
+          // ignore
+        }
+      }
       setLoading(false);
     }
     load();
@@ -170,6 +199,60 @@ export default function MemoryMap() {
     }
   }, [loading, events, mapMode]);
 
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    try {
+      const res = await searchLocation(settings, searchQuery.trim());
+      setSearchResults(res.results);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "搜索失败");
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function handleSelectLocation(lat: number, lng: number) {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.flyTo([lat, lng], 14, { duration: 1.5 });
+    }
+    setShowSearchPanel(false);
+  }
+
+  async function handleExportMap() {
+    // 刷新最新会员状态
+    let latestUser = userInfo;
+    if (settings.authToken) {
+      try {
+        latestUser = await fetchUserInfo(settings);
+        setUserInfo(latestUser);
+      } catch {
+        // ignore
+      }
+    }
+    if (!requirePremium(latestUser, "导出高清恋爱地图")) return;
+    if (!mapRef.current) return;
+    setExporting(true);
+    try {
+      const canvas = await html2canvas(mapRef.current, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+      });
+      const link = document.createElement("a");
+      link.download = `LoveMemo_恋爱地图_${Date.now()}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "导出失败");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -185,8 +268,25 @@ export default function MemoryMap() {
           <h2 className="text-2xl font-bold text-slate-800">恋爱地图</h2>
           <p className="text-slate-500 mt-1">标记我们一起走过的每一个角落</p>
         </div>
-        {events.length > 0 && (
-          <div className="flex items-center bg-white rounded-xl border border-rose-100 p-1 shadow-sm">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSearchPanel(!showSearchPanel)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors shadow-sm text-sm"
+          >
+            <Search className="w-4 h-4" />
+            搜索地名
+          </button>
+          <button
+            onClick={handleExportMap}
+            disabled={exporting || events.length === 0}
+            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors shadow-sm text-sm disabled:opacity-50"
+            title="会员专属"
+          >
+            <Crown className="w-4 h-4 text-amber-500" />
+            {exporting ? "导出中..." : "导出高清图"}
+          </button>
+          {events.length > 0 && (
+            <div className="flex items-center bg-white rounded-xl border border-rose-100 p-1 shadow-sm">
             {(["auto", "china", "world"] as MapMode[]).map((mode) => (
               <button
                 key={mode}
@@ -214,6 +314,7 @@ export default function MemoryMap() {
             ))}
           </div>
         )}
+        </div>
       </div>
 
       {events.length === 0 ? (
@@ -224,12 +325,73 @@ export default function MemoryMap() {
         </div>
       ) : (
         <div
-          className="flex-1 rounded-2xl overflow-hidden border border-rose-100 shadow-xl"
+          className="flex-1 rounded-2xl overflow-hidden border border-rose-100 shadow-xl relative"
           style={{ minHeight: "500px", height: "calc(100vh - 200px)" }}
         >
           <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
+
+          {showSearchPanel && (
+            <div className="absolute top-4 left-4 z-[1000] w-80 bg-white/95 backdrop-blur rounded-2xl shadow-lg border border-rose-100 p-4">
+              <form onSubmit={handleSearch} className="flex gap-2 mb-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="搜索地点"
+                    className="w-full pl-8 pr-7 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300 text-sm"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSearchResults([]);
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="submit"
+                  disabled={searching || !searchQuery.trim()}
+                  className="px-3 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-sm disabled:opacity-50"
+                >
+                  {searching ? "..." : "搜索"}
+                </button>
+              </form>
+
+              <div className="max-h-64 overflow-y-auto scrollbar-thin space-y-2">
+                {searchResults.length === 0 && !searching && searchQuery && (
+                  <p className="text-xs text-slate-400 text-center py-2">
+                    未找到结果
+                  </p>
+                )}
+                {searchResults.map((item, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() =>
+                      handleSelectLocation(item.latitude, item.longitude)
+                    }
+                    className="w-full text-left p-3 rounded-xl hover:bg-rose-50 transition-colors border border-transparent hover:border-rose-100"
+                  >
+                    <p className="text-sm font-medium text-slate-800 truncate">
+                      {item.name}
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">
+                      {item.address}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {tileError && (
-            <div className="absolute top-4 left-4 z-[1000] bg-white/90 backdrop-blur px-4 py-2 rounded-xl text-xs text-rose-600 shadow border border-rose-100">
+            <div className="absolute top-4 right-4 z-[1000] bg-white/90 backdrop-blur px-4 py-2 rounded-xl text-xs text-rose-600 shadow border border-rose-100">
               地图瓦片加载失败，请检查网络连接
             </div>
           )}

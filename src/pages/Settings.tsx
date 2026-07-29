@@ -184,8 +184,15 @@ export default function SettingsPage() {
     try {
       const user = await activateMembership(settings, activationCode.trim());
       setUserInfo(user);
+      // 同步更新本地缓存并广播，让其他页面立即感知会员状态
+      const next: Partial<AppSettings> = {
+        _userInfo: JSON.stringify(user),
+      };
+      await saveSettings(next);
+      setSettings((prev) => ({ ...prev, ...next }));
       setActivationCode("");
       alert("会员激活成功");
+      window.dispatchEvent(new CustomEvent("lovememo-user-changed"));
     } catch (e) {
       alert("激活失败: " + e);
     } finally {
