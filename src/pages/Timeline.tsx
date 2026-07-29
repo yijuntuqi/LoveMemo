@@ -410,41 +410,84 @@ export default function Timeline() {
 
       <div className="hidden print-footer">Created by LoveMemo</div>
 
-      {/* PDF 导出专用容器 */}
+      {/* PDF 导出专用容器：全部使用内联十六进制颜色，避免 html2canvas 不支持 oklch */}
       <div
         ref={printRef}
-        className="fixed left-[-9999px] top-0 w-[794px] bg-white p-10 text-slate-800"
-        style={{ zIndex: -1 }}
+        style={{
+          position: "fixed",
+          left: "-9999px",
+          top: 0,
+          width: "794px",
+          zIndex: -1,
+          opacity: 1,
+          pointerEvents: "none",
+          backgroundColor: "#ffffff",
+          color: "#1f2937",
+          padding: "40px",
+          fontFamily:
+            '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
+        }}
       >
-        <div className="text-center mb-10 pb-8 border-b-2 border-rose-200">
-          <h1 className="text-4xl font-bold text-rose-500">LoveMemo</h1>
-          <p className="text-xl mt-3 font-medium">
+        <div
+          style={{
+            textAlign: "center",
+            marginBottom: "40px",
+            paddingBottom: "32px",
+            borderBottom: "2px solid #fecdd3",
+          }}
+        >
+          <h1 style={{ fontSize: "36px", fontWeight: 700, color: "#f43f5e", margin: 0 }}>
+            LoveMemo
+          </h1>
+          <p style={{ fontSize: "20px", marginTop: "12px", fontWeight: 500 }}>
             {settings.coupleName || "恋爱纪念册"}
           </p>
           {settings.startDate && (
-            <p className="text-sm text-slate-500 mt-2">
+            <p style={{ fontSize: "14px", color: "#64748b", marginTop: "8px" }}>
               从 {settings.startDate} 开始记录
             </p>
           )}
         </div>
 
-        <div className="space-y-8">
+        <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
           {filteredEvents.map((event) => (
-            <div key={event.id} className="pb-6 border-b border-rose-100">
-              <div className="text-sm text-rose-500 font-medium mb-1">
+            <div
+              key={event.id}
+              style={{ paddingBottom: "24px", borderBottom: "1px solid #ffe4e6" }}
+            >
+              <div
+                style={{
+                  fontSize: "14px",
+                  color: "#f43f5e",
+                  fontWeight: 500,
+                  marginBottom: "4px",
+                }}
+              >
                 {event.date}
               </div>
-              <h3 className="text-lg font-bold text-slate-800">{event.title}</h3>
+              <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#1f2937", margin: 0 }}>
+                {event.title}
+              </h3>
               {event.content && (
-                <p className="text-sm text-slate-600 mt-2 whitespace-pre-line">
+                <p
+                  style={{
+                    fontSize: "14px",
+                    color: "#4b5563",
+                    marginTop: "8px",
+                    lineHeight: 1.6,
+                    whiteSpace: "pre-line",
+                  }}
+                >
                   {event.content}
                 </p>
               )}
               {event.location && (
-                <p className="text-xs text-slate-400 mt-2">地点：{event.location}</p>
+                <p style={{ fontSize: "12px", color: "#9ca3af", marginTop: "8px" }}>
+                  地点：{event.location}
+                </p>
               )}
               {event.tags && (
-                <p className="text-xs text-rose-400 mt-2">
+                <p style={{ fontSize: "12px", color: "#fb7185", marginTop: "8px" }}>
                   {event.tags
                     .split(/[,，]/)
                     .map((t) => `#${t.trim()}`)
@@ -452,14 +495,20 @@ export default function Timeline() {
                 </p>
               )}
               {mediaMap[event.id]?.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-3">
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "12px" }}>
                   {mediaMap[event.id].map((item, idx) =>
                     item.type === "image" ? (
                       <img
                         key={idx}
                         src={getMediaUrl(item.path)}
                         alt=""
-                        className="w-24 h-24 object-cover rounded-lg border border-rose-100"
+                        style={{
+                          width: "96px",
+                          height: "96px",
+                          objectFit: "cover",
+                          borderRadius: "8px",
+                          border: "1px solid #ffe4e6",
+                        }}
                       />
                     ) : null,
                   )}
@@ -469,7 +518,16 @@ export default function Timeline() {
           ))}
         </div>
 
-        <div className="text-center text-xs text-slate-400 mt-10 pt-6 border-t border-rose-100">
+        <div
+          style={{
+            textAlign: "center",
+            fontSize: "12px",
+            color: "#9ca3af",
+            marginTop: "40px",
+            paddingTop: "24px",
+            borderTop: "1px solid #ffe4e6",
+          }}
+        >
           Created by LoveMemo · {new Date().toLocaleDateString()}
         </div>
       </div>
