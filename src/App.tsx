@@ -1,13 +1,26 @@
 import { useEffect, useState } from "react";
 import { Routes, Route, NavLink } from "react-router-dom";
-import { Heart, Calendar, Image, MapPin, Gift, Settings } from "lucide-react";
+import {
+  Heart,
+  Calendar,
+  Image,
+  MapPin,
+  Gift,
+  Settings,
+  Trash2,
+  BarChart3,
+} from "lucide-react";
+import Dashboard from "./pages/Dashboard";
 import Timeline from "./pages/Timeline";
 import Gallery from "./pages/Gallery";
 import MemoryMap from "./pages/MemoryMap";
 import Anniversaries from "./pages/Anniversaries";
+import RecycleBin from "./pages/RecycleBin";
+import Statistics from "./pages/Statistics";
 import SettingsPage from "./pages/Settings";
 import AuthGate from "./components/AuthGate";
 import { getSettings } from "./db";
+import { checkAndNotifyAnniversaries } from "./utils/notification";
 import type { AppSettings } from "./types";
 
 function App() {
@@ -21,15 +34,26 @@ function App() {
     }
 
     window.addEventListener("lovememo-settings-changed", refreshSettings);
-    return () =>
+
+    // 启动后检查近期纪念日并发送桌面提醒
+    const timer = setTimeout(() => {
+      checkAndNotifyAnniversaries(7);
+    }, 2000);
+
+    return () => {
       window.removeEventListener("lovememo-settings-changed", refreshSettings);
+      clearTimeout(timer);
+    };
   }, []);
 
   const navItems = [
-    { to: "/", label: "时间线", icon: Calendar },
+    { to: "/", label: "首页", icon: Heart },
+    { to: "/timeline", label: "时间线", icon: Calendar },
     { to: "/gallery", label: "相册", icon: Image },
     { to: "/map", label: "恋爱地图", icon: MapPin },
     { to: "/anniversaries", label: "纪念日", icon: Gift },
+    { to: "/statistics", label: "统计", icon: BarChart3 },
+    { to: "/recycle", label: "回收站", icon: Trash2 },
     { to: "/settings", label: "设置", icon: Settings },
   ];
 
@@ -93,10 +117,13 @@ function App() {
       <main className="flex-1 overflow-hidden print:overflow-visible print:h-auto">
         <AuthGate>
           <Routes>
-            <Route path="/" element={<Timeline />} />
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/timeline" element={<Timeline />} />
             <Route path="/gallery" element={<Gallery />} />
             <Route path="/map" element={<MemoryMap />} />
             <Route path="/anniversaries" element={<Anniversaries />} />
+            <Route path="/statistics" element={<Statistics />} />
+            <Route path="/recycle" element={<RecycleBin />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </AuthGate>

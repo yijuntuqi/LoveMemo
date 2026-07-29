@@ -567,6 +567,209 @@ export async function getAnniversaries(): Promise<Anniversary[]> {
   return rows.map(mapAnniversaryRow);
 }
 
+// Recycle bin
+export async function getDeletedEvents(): Promise<MemoryEvent[]> {
+  const database = await getDb();
+  const rows = await database.select<
+    {
+      id: number;
+      sync_id: string;
+      title: string;
+      content: string;
+      date: string;
+      location: string;
+      latitude: number;
+      longitude: number;
+      tags: string;
+      cover_image: string;
+      show_on_map: number;
+      deleted: number;
+      created_at: string;
+      updated_at: string;
+    }[]
+  >("SELECT * FROM events WHERE deleted = 1 ORDER BY updated_at DESC");
+  return rows.map(mapEventRow);
+}
+
+export async function getDeletedMedia(): Promise<MediaItem[]> {
+  const database = await getDb();
+  const rows = await database.select<
+    {
+      id: number;
+      sync_id: string;
+      event_id: number;
+      type: "image" | "video" | "audio";
+      path: string;
+      thumbnail: string;
+      caption: string;
+      deleted: number;
+      created_at: string;
+      updated_at: string;
+    }[]
+  >("SELECT * FROM media WHERE deleted = 1 ORDER BY updated_at DESC");
+  return rows.map(mapMediaRow);
+}
+
+export async function getDeletedAnniversaries(): Promise<Anniversary[]> {
+  const database = await getDb();
+  const rows = await database.select<
+    {
+      id: number;
+      sync_id: string;
+      title: string;
+      date: string;
+      repeat_yearly: number;
+      repeat_type: string;
+      category: string;
+      icon: string;
+      deleted: number;
+      created_at: string;
+      updated_at: string;
+    }[]
+  >("SELECT * FROM anniversaries WHERE deleted = 1 ORDER BY updated_at DESC");
+  return rows.map(mapAnniversaryRow);
+}
+
+export async function restoreEvent(id: number) {
+  const database = await getDb();
+  const now = new Date().toISOString();
+  await database.execute(
+    "UPDATE events SET deleted = 0, updated_at = ? WHERE id = ?",
+    [now, id],
+  );
+}
+
+export async function restoreMedia(id: number) {
+  const database = await getDb();
+  const now = new Date().toISOString();
+  await database.execute(
+    "UPDATE media SET deleted = 0, updated_at = ? WHERE id = ?",
+    [now, id],
+  );
+}
+
+export async function restoreAnniversary(id: number) {
+  const database = await getDb();
+  const now = new Date().toISOString();
+  await database.execute(
+    "UPDATE anniversaries SET deleted = 0, updated_at = ? WHERE id = ?",
+    [now, id],
+  );
+}
+
+export async function permanentDeleteEvent(id: number) {
+  const database = await getDb();
+  await database.execute("DELETE FROM events WHERE id = ?", [id]);
+}
+
+export async function permanentDeleteMedia(id: number) {
+  const database = await getDb();
+  await database.execute("DELETE FROM media WHERE id = ?", [id]);
+}
+
+export async function permanentDeleteAnniversary(id: number) {
+  const database = await getDb();
+  await database.execute("DELETE FROM anniversaries WHERE id = ?", [id]);
+}
+
+// Dashboard helpers
+export interface DashboardStats {
+  eventCount: number;
+  mediaCount: number;
+  anniversaryCount: number;
+  daysTogether: number | null;
+}
+
+export async function getDashboardStats(startDate?: string): Promise<DashboardStats> {
+  const database = await getDb();
+  const eventRow = await database.select<{ count: number }[]>(
+    "SELECT COUNT(*) as count FROM events WHERE deleted = 0"
+  );
+  const mediaRow = await database.select<{ count: number }[]>(
+    `SELECT COUNT(*) as count FROM media m
+     JOIN events e ON m.event_id = e.id
+     WHERE m.deleted = 0 AND e.deleted = 0`
+  );
+  const anniversaryRow = await database.select<{ count: number }[]>(
+    "SELECT COUNT(*) as count FROM anniversaries WHERE deleted = 0"
+  );
+
+  let daysTogether: number | null = null;
+  if (startDate) {
+    const start = new Date(startDate);
+    const now = new Date();
+    daysTogether = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  }
+
+  return {
+    eventCount: eventRow[0]?.count ?? 0,
+    mediaCount: mediaRow[0]?.count ?? 0,
+    anniversaryCount: anniversaryRow[0]?.count ?? 0,
+    daysTogether,
+  };
+}
+
+export async function getRecentEvents(limit = 5): Promise<MemoryEvent[]> {
+  const database = await getDb();
+  const rows = await database.select<
+    {
+      id: number;
+      sync_id: string;
+      title: string;
+      content: string;
+      date: string;
+      location: string;
+      latitude: number;
+      longitude: number;
+      tags: string;
+      cover_image: string;
+      show_on_map: number;
+      deleted: number;
+      created_at: string;
+      updated_at: string;
+    }[]
+  >("SELECT * FROM events WHERE deleted = 0 ORDER BY date DESC LIMIT ?", [limit]);
+  return rows.map(mapEventRow);
+}
+
+export interface AnniversaryWithDays extends Anniversary {
+  daysUntil: number;
+}
+
+export async function getUpcomingAnniversaries(limit = 3): Promise<AnniversaryWithDays[]> {
+  const database = await getDb();
+  const rows = await database.select<
+    {
+      id: number;
+      sync_id: string;
+      title: string;
+      date: string;
+      repeat_yearly: number;
+      repeat_type: string;
+      category: string;
+      icon: string;
+      deleted: number;
+      created_at: string;
+      updated_at: string;
+    }[]
+  >("SELECT * FROM anniversaries WHERE deleted = 0 ORDER BY date");
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const withDays = rows.map(mapAnniversaryRow).map((a) => {
+    const date = new Date(a.date);
+    let next = new Date(today.getFullYear(), date.getMonth(), date.getDate());
+    if (next < today) {
+      next = new Date(today.getFullYear() + 1, date.getMonth(), date.getDate());
+    }
+    const daysUntil = Math.floor((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    return { ...a, daysUntil };
+  });
+
+  return withDays.sort((a, b) => a.daysUntil - b.daysUntil).slice(0, limit);
+}
+
 // Settings
 export async function getSettings(): Promise<Record<string, string>> {
   const database = await getDb();
@@ -1095,4 +1298,79 @@ export async function importAllData(data: AppBackup) {
       value,
     ]);
   }
+}
+
+// Statistics
+export interface YearlyStat {
+  year: string;
+  count: number;
+}
+
+export async function getEventYearlyStats(): Promise<YearlyStat[]> {
+  const database = await getDb();
+  const rows = await database.select<{ year: string; count: number }[]>(
+    `SELECT strftime('%Y', date) AS year, COUNT(*) AS count
+     FROM events
+     WHERE deleted = 0
+     GROUP BY year
+     ORDER BY year`
+  );
+  return rows;
+}
+
+export interface MonthlyStat {
+  month: string;
+  count: number;
+}
+
+export async function getEventMonthlyStats(): Promise<MonthlyStat[]> {
+  const database = await getDb();
+  const rows = await database.select<{ month: string; count: number }[]>(
+    `SELECT strftime('%Y-%m', date) AS month, COUNT(*) AS count
+     FROM events
+     WHERE deleted = 0
+     GROUP BY month
+     ORDER BY month`
+  );
+  return rows;
+}
+
+export interface LocationStat {
+  location: string;
+  count: number;
+}
+
+export async function getLocationStats(): Promise<LocationStat[]> {
+  const database = await getDb();
+  const rows = await database.select<{ location: string; count: number }[]>(
+    `SELECT location, COUNT(*) AS count
+     FROM events
+     WHERE deleted = 0 AND location IS NOT NULL AND location != ''
+     GROUP BY location
+     ORDER BY count DESC
+     LIMIT 10`
+  );
+  return rows;
+}
+
+export interface TagStat {
+  tag: string;
+  count: number;
+}
+
+export async function getTagStats(): Promise<TagStat[]> {
+  const database = await getDb();
+  const rows = await database.select<{ tags: string }[]>(
+    `SELECT tags FROM events WHERE deleted = 0 AND tags IS NOT NULL AND tags != ''`
+  );
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    for (const tag of row.tags.split(/[,，]/).map((t) => t.trim()).filter(Boolean)) {
+      counts.set(tag, (counts.get(tag) || 0) + 1);
+    }
+  }
+  return Array.from(counts.entries())
+    .map(([tag, count]) => ({ tag, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 20);
 }
