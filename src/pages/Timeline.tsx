@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Plus,
   Heart,
@@ -9,7 +9,6 @@ import {
   Printer,
   Search,
   X,
-  FileDown,
   Crown,
 } from "lucide-react";
 import {
@@ -26,7 +25,6 @@ import {
 import Modal from "../components/Modal";
 import EventForm from "../components/EventForm";
 import { getMediaUrl } from "../utils/media";
-import { exportElementToPdf } from "../utils/pdf";
 import { fetchUserInfo } from "../utils/api";
 import { requirePremium } from "../utils/membership";
 import type { MemoryEvent, MediaItem, AppSettings, UserInfo } from "../types";
@@ -44,7 +42,6 @@ export default function Timeline() {
   const [selectedTag, setSelectedTag] = useState("");
   const [settings, setSettings] = useState<AppSettings>({});
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
-  const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -182,12 +179,8 @@ export default function Timeline() {
     );
   }
 
-  function handlePrint() {
-    window.print();
-  }
-
-  async function handleExportPdf() {
-    // 刷新最新会员状态，避免激活后仍被旧缓存拦截
+  async function handlePrint() {
+    // 刷新最新会员状态
     let latestUser = userInfo;
     if (settings.authToken) {
       try {
@@ -197,25 +190,8 @@ export default function Timeline() {
         // 失败时继续使用已有 userInfo
       }
     }
-    if (!requirePremium(latestUser, "导出 PDF 纪念册")) return;
-    if (filteredEvents.length === 0) {
-      alert("没有可导出的记录");
-      return;
-    }
-    if (!printRef.current) return;
-    try {
-      const start = settings.startDate ? new Date(settings.startDate) : null;
-      const days = start
-        ? Math.floor((Date.now() - start.getTime()) / (1000 * 60 * 60 * 24))
-        : null;
-      await exportElementToPdf(printRef.current, {
-        coupleName: settings.coupleName,
-        startDate: settings.startDate,
-        daysTogether: days,
-      });
-    } catch (e) {
-      alert("导出 PDF 失败: " + (e instanceof Error ? e.message : String(e)));
-    }
+    if (!requirePremium(latestUser, "打印纪念册")) return;
+    window.print();
   }
 
   return (
@@ -234,19 +210,11 @@ export default function Timeline() {
           <button
             onClick={handlePrint}
             className="flex items-center gap-2 px-5 py-2.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors shadow-sm"
-            title="打印或保存为 PDF"
-          >
-            <Printer className="w-5 h-5" />
-            <span>打印纪念册</span>
-          </button>
-          <button
-            onClick={handleExportPdf}
-            className="flex items-center gap-2 px-5 py-2.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors shadow-sm"
-            title="会员专属：导出 PDF 文件"
+            title="会员专属：打印或保存为 PDF"
           >
             <Crown className="w-4 h-4 text-amber-500" />
-            <FileDown className="w-5 h-5" />
-            <span>导出 PDF</span>
+            <Printer className="w-5 h-5" />
+            <span>打印纪念册</span>
           </button>
           <button
             onClick={openCreate}
@@ -409,128 +377,6 @@ export default function Timeline() {
       )}
 
       <div className="hidden print-footer">Created by LoveMemo</div>
-
-      {/* PDF 导出专用容器：全部使用内联十六进制颜色，避免 html2canvas 不支持 oklch */}
-      <div
-        ref={printRef}
-        style={{
-          position: "fixed",
-          left: "-9999px",
-          top: 0,
-          width: "794px",
-          zIndex: -1,
-          opacity: 1,
-          pointerEvents: "none",
-          backgroundColor: "#ffffff",
-          color: "#1f2937",
-          padding: "40px",
-          fontFamily:
-            '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
-        }}
-      >
-        <div
-          style={{
-            textAlign: "center",
-            marginBottom: "40px",
-            paddingBottom: "32px",
-            borderBottom: "2px solid #fecdd3",
-          }}
-        >
-          <h1 style={{ fontSize: "36px", fontWeight: 700, color: "#f43f5e", margin: 0 }}>
-            LoveMemo
-          </h1>
-          <p style={{ fontSize: "20px", marginTop: "12px", fontWeight: 500 }}>
-            {settings.coupleName || "恋爱纪念册"}
-          </p>
-          {settings.startDate && (
-            <p style={{ fontSize: "14px", color: "#64748b", marginTop: "8px" }}>
-              从 {settings.startDate} 开始记录
-            </p>
-          )}
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
-          {filteredEvents.map((event) => (
-            <div
-              key={event.id}
-              style={{ paddingBottom: "24px", borderBottom: "1px solid #ffe4e6" }}
-            >
-              <div
-                style={{
-                  fontSize: "14px",
-                  color: "#f43f5e",
-                  fontWeight: 500,
-                  marginBottom: "4px",
-                }}
-              >
-                {event.date}
-              </div>
-              <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#1f2937", margin: 0 }}>
-                {event.title}
-              </h3>
-              {event.content && (
-                <p
-                  style={{
-                    fontSize: "14px",
-                    color: "#4b5563",
-                    marginTop: "8px",
-                    lineHeight: 1.6,
-                    whiteSpace: "pre-line",
-                  }}
-                >
-                  {event.content}
-                </p>
-              )}
-              {event.location && (
-                <p style={{ fontSize: "12px", color: "#9ca3af", marginTop: "8px" }}>
-                  地点：{event.location}
-                </p>
-              )}
-              {event.tags && (
-                <p style={{ fontSize: "12px", color: "#fb7185", marginTop: "8px" }}>
-                  {event.tags
-                    .split(/[,，]/)
-                    .map((t) => `#${t.trim()}`)
-                    .join(" ")}
-                </p>
-              )}
-              {mediaMap[event.id]?.length > 0 && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "12px" }}>
-                  {mediaMap[event.id].map((item, idx) =>
-                    item.type === "image" ? (
-                      <img
-                        key={idx}
-                        src={getMediaUrl(item.path)}
-                        alt=""
-                        style={{
-                          width: "96px",
-                          height: "96px",
-                          objectFit: "cover",
-                          borderRadius: "8px",
-                          border: "1px solid #ffe4e6",
-                        }}
-                      />
-                    ) : null,
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div
-          style={{
-            textAlign: "center",
-            fontSize: "12px",
-            color: "#9ca3af",
-            marginTop: "40px",
-            paddingTop: "24px",
-            borderTop: "1px solid #ffe4e6",
-          }}
-        >
-          Created by LoveMemo · {new Date().toLocaleDateString()}
-        </div>
-      </div>
 
       <Modal
         isOpen={isModalOpen}
