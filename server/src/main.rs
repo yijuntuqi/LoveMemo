@@ -1,6 +1,7 @@
 mod ai;
 mod auth;
 mod db;
+mod email;
 mod map;
 mod membership;
 mod sync;
