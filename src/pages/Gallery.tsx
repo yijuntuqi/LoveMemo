@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ImageIcon, Play } from "lucide-react";
+import { ImageIcon, Play, Search, X } from "lucide-react";
 import { getAllMedia, getEvents, initDatabase } from "../db";
 import { getMediaUrl } from "../utils/media";
 import Modal from "../components/Modal";
@@ -11,6 +11,7 @@ export default function Gallery() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<MediaItem | null>(null);
   const [filter, setFilter] = useState<"all" | "image" | "video">("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -23,9 +24,14 @@ export default function Gallery() {
     load();
   }, []);
 
-  const filtered = media.filter((item) =>
-    filter === "all" ? true : item.type === filter,
-  );
+  const filtered = media.filter((item) => {
+    const matchesType = filter === "all" ? true : item.type === filter;
+    const q = searchQuery.trim().toLowerCase();
+    const title = eventTitle(item.eventId).toLowerCase();
+    const matchesQuery =
+      !q || title.includes(q) || item.path.toLowerCase().includes(q);
+    return matchesType && matchesQuery;
+  });
 
   function eventTitle(eventId: number) {
     return events.find((e) => e.id === eventId)?.title || "未关联事件";
@@ -41,7 +47,7 @@ export default function Gallery() {
 
   return (
     <div className="h-full flex flex-col p-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">恋爱相册</h2>
           <p className="text-slate-500 mt-1">收藏我们最美好的瞬间</p>
@@ -63,11 +69,36 @@ export default function Gallery() {
         </div>
       </div>
 
+      <div className="flex items-center gap-3 mb-6">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="搜索关联的故事标题"
+            className="w-full pl-9 pr-9 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300 text-sm"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
       {filtered.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
           <ImageIcon className="w-16 h-16 mb-4 text-rose-200" />
-          <p>还没有媒体文件</p>
-          <p className="text-sm mt-1">在时间线中添加记录时上传照片或视频</p>
+          <p>{media.length === 0 ? "还没有媒体文件" : "没有找到匹配的文件"}</p>
+          <p className="text-sm mt-1">
+            {media.length === 0
+              ? "在时间线中添加记录时上传照片或视频"
+              : "尝试调整搜索或筛选条件"}
+          </p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto scrollbar-thin pr-2">

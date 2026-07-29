@@ -16,6 +16,7 @@
     "fs:allow-download-read",
     "fs:allow-download-write",
     "dialog:default",
+    "notification:default",
     {
       "identifier": "http:default",
       "allow": [

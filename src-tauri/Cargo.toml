@@ -29,6 +29,7 @@ uuid = { version = "1", features = ["v4"] }
 reqwest = { version = "0.12", features = ["json"] }
 urlencoding = "2"
 tauri-plugin-http = "2.5.9"
+tauri-plugin-notification = "2"
 
 [profile.dev]
 # 调试模式下禁用增量编译的 hard-link 优化，避免某些文件系统报错 1117

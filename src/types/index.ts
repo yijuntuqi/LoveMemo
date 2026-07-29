@@ -44,6 +44,10 @@ export interface Anniversary {
   deleted?: boolean;
 }
 
+export interface AnniversaryWithDays extends Anniversary {
+  daysUntil: number;
+}
+
 export type AnniversaryCategory =
   | "date"
   | "gift"
