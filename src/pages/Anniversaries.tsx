@@ -15,12 +15,14 @@ import {
 import {
   initDatabase,
   getAnniversaries,
+  getSettings,
   createAnniversary,
   updateAnniversary,
   deleteAnniversary,
 } from "../db";
 import Modal from "../components/Modal";
-import type { Anniversary, AnniversaryCategory } from "../types";
+import { getThemeClasses } from "../utils/theme";
+import type { Anniversary, AnniversaryCategory, AppSettings } from "../types";
 
 const CATEGORIES: { value: AnniversaryCategory; label: string; icon: React.ReactNode }[] = [
   { value: "date", label: "约会", icon: <Heart className="w-5 h-5" /> },
@@ -48,6 +50,7 @@ interface FormData {
 
 export default function Anniversaries() {
   const [items, setItems] = useState<Anniversary[]>([]);
+  const [settings, setSettings] = useState<AppSettings>({});
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<Anniversary | null>(null);
@@ -61,8 +64,9 @@ export default function Anniversaries() {
   useEffect(() => {
     async function load() {
       await initDatabase();
-      const data = await getAnniversaries();
+      const [data, s] = await Promise.all([getAnniversaries(), getSettings()]);
       setItems(data);
+      setSettings(s as AppSettings);
       setLoading(false);
     }
     load();
@@ -139,24 +143,26 @@ export default function Anniversaries() {
     await refresh();
   }
 
+  const t = getThemeClasses(settings.theme);
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-rose-500" />
+        <div className={`animate-spin rounded-full h-10 w-10 border-b-2 ${t.loadingColor}`} />
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col p-8">
+    <div className={`h-full flex flex-col p-8 ${t.pageBg}`}>
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">纪念日</h2>
-          <p className="text-slate-500 mt-1">让每一个特别的日子都不被遗忘</p>
+          <h2 className={`text-2xl font-bold ${t.title}`}>纪念日</h2>
+          <p className={`${t.subtitle} mt-1`}>让每一个特别的日子都不被遗忘</p>
         </div>
         <button
           onClick={openCreate}
-          className="flex items-center gap-2 px-5 py-2.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl transition-colors shadow-lg shadow-rose-200"
+          className={`flex items-center gap-2 px-5 py-2.5 text-white rounded-xl transition-colors shadow-lg ${t.buttonPrimary}`}
         >
           <Plus className="w-5 h-5" />
           <span>新增纪念日</span>
@@ -165,7 +171,7 @@ export default function Anniversaries() {
 
       {items.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-          <Gift className="w-16 h-16 mb-4 text-rose-200" />
+          <Gift className={`w-16 h-16 mb-4 ${t.emptyIcon}`} />
           <p>还没有纪念日</p>
           <p className="text-sm mt-1">添加第一次牵手、初吻、周年纪念日等</p>
         </div>
@@ -178,16 +184,16 @@ export default function Anniversaries() {
               return (
                 <div
                   key={item.id}
-                  className="bg-white rounded-2xl p-5 shadow-sm border border-rose-100 hover:shadow-md transition-shadow group"
+                  className={`bg-white rounded-2xl p-5 shadow-sm border ${t.cardBorder} hover:shadow-md transition-shadow group`}
                 >
                   <div className="flex items-start justify-between">
-                    <div className="w-12 h-12 rounded-xl bg-rose-100 flex items-center justify-center">
-                      <span className="text-rose-500">{info.icon}</span>
+                    <div className={`w-12 h-12 rounded-xl ${t.accentBg} flex items-center justify-center`}>
+                      <span className={t.accent}>{info.icon}</span>
                     </div>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => openEdit(item)}
-                        className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                        className={`p-2 text-slate-400 ${t.accentHover} ${t.accentBgHover} rounded-lg transition-colors`}
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
@@ -205,12 +211,12 @@ export default function Anniversaries() {
                   <div className="flex items-center gap-2 text-sm text-slate-500 mt-1">
                     <Calendar className="w-4 h-4" />
                     {item.date}
-                    <span className="text-xs bg-rose-50 text-rose-500 px-2 py-0.5 rounded-full">
+                    <span className={`text-xs ${t.accentBg} ${t.accent} px-2 py-0.5 rounded-full`}>
                       {REPEAT_TYPES.find((r) => r.value === item.repeatType)?.label || "每年"}
                     </span>
                   </div>
-                  <div className="mt-4 pt-4 border-t border-rose-100">
-                    <p className="text-3xl font-bold text-rose-500">
+                  <div className={`mt-4 pt-4 border-t ${t.cardBorder}`}>
+                    <p className={`text-3xl font-bold ${t.accent}`}>
                       {days === 0 ? "今天" : `${days} 天后`}
                     </p>
                     <p className="text-sm text-slate-400 mt-1">
@@ -239,7 +245,7 @@ export default function Anniversaries() {
               type="text"
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className="w-full px-4 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
+              className={`w-full px-4 py-2 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing}`}
               placeholder="例如：一周年纪念日"
               required
             />
@@ -252,7 +258,7 @@ export default function Anniversaries() {
               type="date"
               value={form.date}
               onChange={(e) => setForm({ ...form, date: e.target.value })}
-              className="w-full px-4 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
+              className={`w-full px-4 py-2 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing}`}
               required
             />
           </div>
@@ -265,7 +271,7 @@ export default function Anniversaries() {
               onChange={(e) =>
                 setForm({ ...form, repeatType: e.target.value as Anniversary["repeatType"] })
               }
-              className="w-full px-4 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
+              className={`w-full px-4 py-2 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing}`}
             >
               {REPEAT_TYPES.map((r) => (
                 <option key={r.value} value={r.value}>
@@ -286,8 +292,8 @@ export default function Anniversaries() {
                   onClick={() => setForm({ ...form, category: c.value })}
                   className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-colors ${
                     form.category === c.value
-                      ? "border-rose-400 bg-rose-50 text-rose-600"
-                      : "border-rose-200 text-slate-500 hover:bg-rose-50"
+                      ? `${t.accentBorder} ${t.accentBg} ${t.accent}`
+                      : `${t.accentBorder} text-slate-500 ${t.accentBgHover}`
                   }`}
                 >
                   {c.icon}
@@ -306,7 +312,7 @@ export default function Anniversaries() {
             </button>
             <button
               type="submit"
-              className="px-6 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-xl"
+              className={`px-6 py-2 text-white rounded-xl ${t.buttonPrimary}`}
             >
               保存
             </button>

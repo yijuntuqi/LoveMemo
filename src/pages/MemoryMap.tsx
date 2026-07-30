@@ -1,5 +1,6 @@
 
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   MapPin,
   Globe,
@@ -12,6 +13,7 @@ import { exportToPng } from "../utils/exportImage";
 import { initDatabase, getEvents, getSettings } from "../db";
 import { fetchUserInfo, searchLocation } from "../utils/api";
 import { requirePremium } from "../utils/membership";
+import { getThemeClasses } from "../utils/theme";
 import type { MemoryEvent, AppSettings, UserInfo } from "../types";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -64,6 +66,7 @@ const WORLD_VIEW: L.LatLngExpression = [25.0, 10.0];
 const WORLD_ZOOM = 2;
 
 export default function MemoryMap() {
+  const navigate = useNavigate();
   const [events, setEvents] = useState<MemoryEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [mapMode, setMapMode] = useState<MapMode>("auto");
@@ -195,8 +198,12 @@ export default function MemoryMap() {
           <div style="font-weight:700;color:#be123c;font-size:15px;">${event.title}</div>
           <div style="color:#4b5563;margin-top:4px;">${event.location || ""}</div>
           <div style="color:#9ca3af;font-size:12px;margin-top:6px;">${event.date}</div>
+          <div style="margin-top:8px;color:#e11d48;font-size:12px;font-weight:500;">点击查看详情</div>
         </div>`,
       );
+      marker.on("click", () => {
+        navigate(`/timeline?event=${event.id}`);
+      });
       marker.addTo(markersLayer);
       bounds.extend([lat, lng]);
     });
@@ -302,25 +309,27 @@ export default function MemoryMap() {
     }
   }
 
+  const t = getThemeClasses(settings.theme);
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-rose-500" />
+        <div className={`animate-spin rounded-full h-10 w-10 border-b-2 ${t.loadingColor}`} />
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col p-8">
+    <div className={`h-full flex flex-col p-8 ${t.pageBg}`}>
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">恋爱地图</h2>
-          <p className="text-slate-500 mt-1">标记我们一起走过的每一个角落</p>
+          <h2 className={`text-2xl font-bold ${t.title}`}>恋爱地图</h2>
+          <p className={`${t.subtitle} mt-1`}>标记我们一起走过的每一个角落</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowSearchPanel(!showSearchPanel)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors shadow-sm text-sm"
+            className={`flex items-center gap-1.5 px-4 py-2 bg-white border ${t.accentBorder} ${t.accent} ${t.accentBgHover} rounded-xl transition-colors shadow-sm text-sm`}
           >
             <Search className="w-4 h-4" />
             搜索地名
@@ -328,22 +337,22 @@ export default function MemoryMap() {
           <button
             onClick={handleExportMap}
             disabled={exporting}
-            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors shadow-sm text-sm disabled:opacity-50"
+            className={`flex items-center gap-1.5 px-4 py-2 bg-white border ${t.accentBorder} ${t.accent} ${t.accentBgHover} rounded-xl transition-colors shadow-sm text-sm disabled:opacity-50`}
             title="导出当前地图为高清图片"
           >
             <Download className="w-4 h-4" />
             {exporting ? "导出中..." : "导出图片"}
           </button>
           {events.length > 0 && (
-            <div className="flex items-center bg-white rounded-xl border border-rose-100 p-1 shadow-sm">
+            <div className={`flex items-center bg-white rounded-xl border ${t.cardBorder} p-1 shadow-sm`}>
             {(["auto", "china"] as MapMode[]).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setMapMode(mode)}
                 className={`px-3 py-1.5 text-sm rounded-lg flex items-center gap-1.5 transition-colors ${
                   mapMode === mode
-                    ? "bg-rose-100 text-rose-600 font-medium"
-                    : "text-slate-500 hover:bg-rose-50"
+                    ? `${t.accentBg} ${t.accent} font-medium`
+                    : `text-slate-500 ${t.accentBgHover}`
                 }`}
                 title={
                   mode === "auto"
@@ -368,19 +377,19 @@ export default function MemoryMap() {
 
       {events.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-          <MapPin className="w-16 h-16 mb-4 text-rose-200" />
+          <MapPin className={`w-16 h-16 mb-4 ${t.emptyIcon}`} />
           <p>还没有地点记录</p>
           <p className="text-sm mt-1">在添加记录时搜索地点并勾选“同时添加到恋爱地图”</p>
         </div>
       ) : (
         <div
-          className="flex-1 rounded-2xl overflow-hidden border border-rose-100 shadow-xl relative"
+          className={`flex-1 rounded-2xl overflow-hidden border ${t.cardBorder} shadow-xl relative`}
           style={{ minHeight: "500px", height: "calc(100vh - 200px)" }}
         >
           <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
 
           {showSearchPanel && (
-            <div className="absolute top-4 left-4 z-[1000] w-80 bg-white/95 backdrop-blur rounded-2xl shadow-lg border border-rose-100 p-4">
+            <div className={`absolute top-4 left-4 z-[1000] w-80 bg-white/95 backdrop-blur rounded-2xl shadow-lg border ${t.cardBorder} p-4`}>
               <form onSubmit={handleSearch} className="flex gap-2 mb-3">
                 <div className="relative flex-1">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -389,7 +398,7 @@ export default function MemoryMap() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="搜索地点"
-                    className="w-full pl-8 pr-7 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300 text-sm"
+                    className={`w-full pl-8 pr-7 py-2 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing} text-sm`}
                   />
                   {searchQuery && (
                     <button
@@ -398,7 +407,7 @@ export default function MemoryMap() {
                         setSearchQuery("");
                         setSearchResults([]);
                       }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500"
+                      className={`absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 ${t.accentHover}`}
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -407,7 +416,7 @@ export default function MemoryMap() {
                 <button
                   type="submit"
                   disabled={searching || !searchQuery.trim()}
-                  className="px-3 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-sm disabled:opacity-50"
+                  className={`px-3 py-2 ${t.buttonPrimary} text-white rounded-xl text-sm disabled:opacity-50`}
                 >
                   {searching ? "..." : "搜索"}
                 </button>
@@ -425,8 +434,7 @@ export default function MemoryMap() {
                     onClick={() =>
                       handleSelectLocation(item.latitude, item.longitude)
                     }
-                    className="w-full text-left p-3 rounded-xl hover:bg-rose-50 transition-colors border border-transparent hover:border-rose-100"
-                  >
+                    className={`w-full text-left p-3 rounded-xl ${t.accentBgHover} transition-colors`}>
                     <p className="text-sm font-medium text-slate-800 truncate">
                       {item.name}
                     </p>
@@ -440,7 +448,7 @@ export default function MemoryMap() {
           )}
 
           {tileError && (
-            <div className="absolute top-4 right-4 z-[1000] bg-white/90 backdrop-blur px-4 py-2 rounded-xl text-xs text-rose-600 shadow border border-rose-100">
+            <div className={`absolute top-4 right-4 z-[1000] bg-white/90 backdrop-blur px-4 py-2 rounded-xl text-xs ${t.accent} shadow border ${t.cardBorder}`}>
               地图瓦片加载失败，请检查网络连接
             </div>
           )}

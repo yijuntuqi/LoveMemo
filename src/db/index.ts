@@ -91,6 +91,11 @@ async function migrateToV2(database: Database) {
   } catch {}
 }
 
+async function migrateToV3(database: Database) {
+  await addColumnIfMissing(database, "events", "mood", "TEXT");
+  await addColumnIfMissing(database, "events", "weather", "TEXT");
+}
+
 export async function initDatabase(): Promise<Database> {
   if (db) return db;
   if (initPromise) return initPromise;
@@ -169,9 +174,10 @@ export async function initDatabase(): Promise<Database> {
       )
     `);
 
-    // 版本化迁移：v2 增加同步相关列
+    // 版本化迁移：v2 增加同步相关列；v3 增加心情天气
     // 注意：不管 user_version，总是确保关键列存在（防止之前迁移中途失败）
     await migrateToV2(database);
+    await migrateToV3(database);
 
     const versionResult = await database.select<{ user_version: number }[]>(
       "PRAGMA user_version",
@@ -180,6 +186,9 @@ export async function initDatabase(): Promise<Database> {
 
     if (version < 2) {
       await database.execute("PRAGMA user_version = 2");
+    }
+    if (version < 3) {
+      await database.execute("PRAGMA user_version = 3");
     }
 
     db = database;
@@ -209,6 +218,8 @@ function mapEventRow(row: {
   tags: string;
   cover_image: string;
   show_on_map: number;
+  mood: string;
+  weather: string;
   deleted: number;
   created_at: string;
   updated_at: string;
@@ -225,6 +236,8 @@ function mapEventRow(row: {
     tags: row.tags,
     coverImage: row.cover_image,
     showOnMap: row.show_on_map === 1,
+    mood: row.mood,
+    weather: row.weather,
     deleted: row.deleted === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -298,6 +311,8 @@ export interface EventInput {
   tags?: string;
   coverImage?: string;
   showOnMap?: boolean;
+  mood?: string;
+  weather?: string;
 }
 
 export async function createEvent(input: EventInput) {
@@ -305,8 +320,8 @@ export async function createEvent(input: EventInput) {
   const syncId = crypto.randomUUID();
   const now = new Date().toISOString();
   const result = await database.execute(
-    `INSERT INTO events (sync_id, title, content, date, location, latitude, longitude, tags, cover_image, show_on_map, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO events (sync_id, title, content, date, location, latitude, longitude, tags, cover_image, show_on_map, mood, weather, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       syncId,
       input.title,
@@ -318,6 +333,8 @@ export async function createEvent(input: EventInput) {
       input.tags || null,
       input.coverImage || null,
       input.showOnMap === false ? 0 : 1,
+      input.mood || null,
+      input.weather || null,
       now,
     ],
   );
@@ -330,7 +347,7 @@ export async function updateEvent(id: number, input: EventInput) {
   await database.execute(
     `UPDATE events SET
       title = ?, content = ?, date = ?, location = ?,
-      latitude = ?, longitude = ?, tags = ?, cover_image = ?, show_on_map = ?, updated_at = ?
+      latitude = ?, longitude = ?, tags = ?, cover_image = ?, show_on_map = ?, mood = ?, weather = ?, updated_at = ?
      WHERE id = ?`,
     [
       input.title,
@@ -342,6 +359,8 @@ export async function updateEvent(id: number, input: EventInput) {
       input.tags || null,
       input.coverImage || null,
       input.showOnMap === false ? 0 : 1,
+      input.mood || null,
+      input.weather || null,
       now,
       id,
     ],
@@ -371,6 +390,8 @@ export async function getEventById(id: number): Promise<MemoryEvent | null> {
       longitude: number;
       tags: string;
       cover_image: string;
+      mood: string;
+      weather: string;
       show_on_map: number;
       deleted: number;
       created_at: string;
@@ -394,6 +415,8 @@ export async function getEvents(): Promise<MemoryEvent[]> {
       longitude: number;
       tags: string;
       cover_image: string;
+      mood: string;
+      weather: string;
       show_on_map: number;
       deleted: number;
       created_at: string;
@@ -582,6 +605,8 @@ export async function getDeletedEvents(): Promise<MemoryEvent[]> {
       longitude: number;
       tags: string;
       cover_image: string;
+      mood: string;
+      weather: string;
       show_on_map: number;
       deleted: number;
       created_at: string;
@@ -672,6 +697,57 @@ export async function permanentDeleteAnniversary(id: number) {
   await database.execute("DELETE FROM anniversaries WHERE id = ?", [id]);
 }
 
+export async function clearAllData() {
+  const database = await getDb();
+  await database.execute("DELETE FROM media");
+  await database.execute("DELETE FROM events");
+  await database.execute("DELETE FROM anniversaries");
+}
+
+export async function permanentDeleteAllDeletedRecords(): Promise<number> {
+  const database = await getDb();
+  const eventsResult = await database.execute(
+    "DELETE FROM events WHERE deleted = 1",
+  );
+  const mediaResult = await database.execute(
+    "DELETE FROM media WHERE deleted = 1",
+  );
+  const anniversaryResult = await database.execute(
+    "DELETE FROM anniversaries WHERE deleted = 1",
+  );
+  return (
+    (eventsResult.rowsAffected ?? 0) +
+    (mediaResult.rowsAffected ?? 0) +
+    (anniversaryResult.rowsAffected ?? 0)
+  );
+}
+
+export async function cleanupDeletedRecords(retentionDays = 30): Promise<number> {
+  const database = await getDb();
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - retentionDays);
+  const cutoffStr = cutoff.toISOString();
+
+  const eventsResult = await database.execute(
+    "DELETE FROM events WHERE deleted = 1 AND updated_at < ?",
+    [cutoffStr],
+  );
+  const mediaResult = await database.execute(
+    "DELETE FROM media WHERE deleted = 1 AND updated_at < ?",
+    [cutoffStr],
+  );
+  const anniversaryResult = await database.execute(
+    "DELETE FROM anniversaries WHERE deleted = 1 AND updated_at < ?",
+    [cutoffStr],
+  );
+
+  return (
+    (eventsResult.rowsAffected ?? 0) +
+    (mediaResult.rowsAffected ?? 0) +
+    (anniversaryResult.rowsAffected ?? 0)
+  );
+}
+
 // Dashboard helpers
 export interface DashboardStats {
   eventCount: number;
@@ -723,6 +799,8 @@ export async function getRecentEvents(limit = 5): Promise<MemoryEvent[]> {
       longitude: number;
       tags: string;
       cover_image: string;
+      mood: string;
+      weather: string;
       show_on_map: number;
       deleted: number;
       created_at: string;
@@ -795,6 +873,11 @@ export async function saveSettings(settings: Partial<AppSettings>) {
   }
 }
 
+export async function deleteSetting(key: string): Promise<void> {
+  const database = await getDb();
+  await database.execute("DELETE FROM settings WHERE key = ?", [key]);
+}
+
 // Sync helpers
 export async function getSettingsForSync(): Promise<AppSettings> {
   const settings = await getSettings();
@@ -837,6 +920,8 @@ export async function getLocalChanges(since?: string): Promise<SyncChange[]> {
       longitude: number;
       tags: string;
       cover_image: string;
+      mood: string;
+      weather: string;
       show_on_map: number;
       deleted: number;
       created_at: string;
@@ -966,8 +1051,8 @@ async function applyEventChange(
   const payload = change.payload as MemoryEvent;
   if (rows.length === 0) {
     await database.execute(
-      `INSERT INTO events (sync_id, title, content, date, location, latitude, longitude, tags, cover_image, show_on_map, created_at, updated_at, deleted)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      `INSERT INTO events (sync_id, title, content, date, location, latitude, longitude, tags, cover_image, show_on_map, mood, weather, created_at, updated_at, deleted)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
       [
         change.record_id,
         payload.title,
@@ -979,6 +1064,8 @@ async function applyEventChange(
         payload.tags || null,
         payload.coverImage || null,
         payload.showOnMap === false ? 0 : 1,
+        payload.mood || null,
+        payload.weather || null,
         payload.createdAt || change.updated_at,
         change.updated_at,
       ],
@@ -987,7 +1074,7 @@ async function applyEventChange(
     await database.execute(
       `UPDATE events SET
         title = ?, content = ?, date = ?, location = ?,
-        latitude = ?, longitude = ?, tags = ?, cover_image = ?, show_on_map = ?,
+        latitude = ?, longitude = ?, tags = ?, cover_image = ?, show_on_map = ?, mood = ?, weather = ?,
         updated_at = ?, deleted = 0
        WHERE id = ?`,
       [
@@ -1000,6 +1087,8 @@ async function applyEventChange(
         payload.tags || null,
         payload.coverImage || null,
         payload.showOnMap === false ? 0 : 1,
+        payload.mood || null,
+        payload.weather || null,
         change.updated_at,
         rows[0].id,
       ],
@@ -1174,6 +1263,8 @@ export async function exportAllData(): Promise<AppBackup> {
         longitude: number;
         tags: string;
         cover_image: string;
+      mood: string;
+      weather: string;
         show_on_map: number;
         deleted: number;
         created_at: string;
@@ -1232,8 +1323,8 @@ export async function importAllData(data: AppBackup) {
 
   for (const event of data.events) {
     await database.execute(
-      `INSERT INTO events (id, sync_id, title, content, date, location, latitude, longitude, tags, cover_image, show_on_map, created_at, updated_at, deleted)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO events (id, sync_id, title, content, date, location, latitude, longitude, tags, cover_image, show_on_map, mood, weather, created_at, updated_at, deleted)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         event.id,
         event.sync_id || crypto.randomUUID(),
@@ -1246,6 +1337,8 @@ export async function importAllData(data: AppBackup) {
         event.tags || null,
         event.coverImage || null,
         event.showOnMap === false ? 0 : 1,
+        event.mood || null,
+        event.weather || null,
         event.createdAt,
         event.updatedAt || event.updated_at || new Date().toISOString(),
         event.deleted ? 1 : 0,

@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { ImageIcon, Play, Search, X } from "lucide-react";
-import { getAllMedia, getEvents, initDatabase } from "../db";
+import { getAllMedia, getEvents, getSettings, initDatabase } from "../db";
 import { getMediaUrl } from "../utils/media";
+import { getThemeClasses } from "../utils/theme";
 import Modal from "../components/Modal";
-import type { MediaItem, MemoryEvent } from "../types";
+import type { MediaItem, MemoryEvent, AppSettings } from "../types";
 
 export default function Gallery() {
   const [media, setMedia] = useState<MediaItem[]>([]);
@@ -12,13 +13,19 @@ export default function Gallery() {
   const [selected, setSelected] = useState<MediaItem | null>(null);
   const [filter, setFilter] = useState<"all" | "image" | "video">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [settings, setSettings] = useState<AppSettings>({});
 
   useEffect(() => {
     async function load() {
       await initDatabase();
-      const [m, e] = await Promise.all([getAllMedia(), getEvents()]);
+      const [m, e, s] = await Promise.all([
+        getAllMedia(),
+        getEvents(),
+        getSettings(),
+      ]);
       setMedia(m);
       setEvents(e);
+      setSettings(s as AppSettings);
       setLoading(false);
     }
     load();
@@ -37,30 +44,32 @@ export default function Gallery() {
     return events.find((e) => e.id === eventId)?.title || "未关联事件";
   }
 
+  const t = getThemeClasses(settings.theme);
+
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-rose-500" />
+      <div className={`h-full flex items-center justify-center ${t.pageBg}`}>
+        <div className={`animate-spin rounded-full h-10 w-10 border-b-2 ${t.loadingColor}`} />
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col p-8">
+    <div className={`h-full flex flex-col p-8 ${t.pageBg}`}>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">恋爱相册</h2>
-          <p className="text-slate-500 mt-1">收藏我们最美好的瞬间</p>
+          <h2 className={`text-2xl font-bold ${t.title}`}>恋爱相册</h2>
+          <p className={`${t.subtitle} mt-1`}>收藏我们最美好的瞬间</p>
         </div>
-        <div className="flex gap-2 bg-white rounded-xl p-1 border border-rose-100">
+        <div className={`flex gap-2 bg-white rounded-xl p-1 border ${t.cardBorder}`}>
           {(["all", "image", "video"] as const).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                 filter === f
-                  ? "bg-rose-100 text-rose-600 font-medium"
-                  : "text-slate-500 hover:bg-rose-50"
+                  ? `${t.accentBg} ${t.accent} font-medium`
+                  : `text-slate-500 ${t.accentBgHover}`
               }`}
             >
               {f === "all" ? "全部" : f === "image" ? "照片" : "视频"}
@@ -77,12 +86,12 @@ export default function Gallery() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="搜索关联的故事标题"
-            className="w-full pl-9 pr-9 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300 text-sm"
+            className={`w-full pl-9 pr-9 py-2 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing} text-sm`}
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500"
+              className={`absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 ${t.accentHover}`}
             >
               <X className="w-4 h-4" />
             </button>
@@ -92,7 +101,7 @@ export default function Gallery() {
 
       {filtered.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-          <ImageIcon className="w-16 h-16 mb-4 text-rose-200" />
+          <ImageIcon className={`w-16 h-16 mb-4 ${t.emptyIcon}`} />
           <p>{media.length === 0 ? "还没有媒体文件" : "没有找到匹配的文件"}</p>
           <p className="text-sm mt-1">
             {media.length === 0
@@ -107,7 +116,7 @@ export default function Gallery() {
               <div
                 key={idx}
                 onClick={() => setSelected(item)}
-                className="aspect-square rounded-2xl overflow-hidden border border-rose-100 bg-white shadow-sm cursor-pointer hover:shadow-md transition-shadow relative group"
+                className={`aspect-square rounded-2xl overflow-hidden border ${t.cardBorder} bg-white shadow-sm cursor-pointer hover:shadow-md transition-shadow relative group`}
               >
                 {item.type === "image" ? (
                   <img

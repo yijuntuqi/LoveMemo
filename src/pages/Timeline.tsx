@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Plus,
   Heart,
@@ -23,14 +24,16 @@ import {
   getMediaByEventId,
 } from "../db";
 import Modal from "../components/Modal";
-import EventForm from "../components/EventForm";
+import EventForm, { MOOD_OPTIONS, WEATHER_OPTIONS } from "../components/EventForm";
 import { getMediaUrl } from "../utils/media";
 import { fetchUserInfo } from "../utils/api";
 import { requirePremium } from "../utils/membership";
+import { getThemeClasses } from "../utils/theme";
 import type { MemoryEvent, MediaItem, AppSettings, UserInfo } from "../types";
 import type { EventFormData } from "../components/EventForm";
 
 export default function Timeline() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [events, setEvents] = useState<MemoryEvent[]>([]);
   const [mediaMap, setMediaMap] = useState<Record<number, MediaItem[]>>({});
   const [loading, setLoading] = useState(true);
@@ -42,6 +45,10 @@ export default function Timeline() {
   const [selectedTag, setSelectedTag] = useState("");
   const [settings, setSettings] = useState<AppSettings>({});
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const [highlightedEventId, setHighlightedEventId] = useState<number | null>(
+    null,
+  );
+  const eventRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   useEffect(() => {
     async function load() {
@@ -64,9 +71,29 @@ export default function Timeline() {
       }
       setMediaMap(map);
       setLoading(false);
+
+      // 如果从地图跳转过来，滚动到指定记录
+      const eventIdParam = searchParams.get("event");
+      if (eventIdParam) {
+        const eventId = Number(eventIdParam);
+        if (!isNaN(eventId)) {
+          setHighlightedEventId(eventId);
+          setTimeout(() => {
+            const el = eventRefs.current[eventId];
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+          }, 100);
+          // 滚动后清除 URL 参数，避免刷新时重复跳转
+          setTimeout(() => {
+            setSearchParams({}, { replace: true });
+            setHighlightedEventId(null);
+          }, 1500);
+        }
+      }
     }
     load();
-  }, []);
+  }, [searchParams]);
 
   async function refreshEvents() {
     const data = await getEvents();
@@ -90,6 +117,8 @@ export default function Timeline() {
         tags: form.tags || undefined,
         coverImage: form.coverImage || undefined,
         showOnMap: form.showOnMap,
+        mood: form.mood || undefined,
+        weather: form.weather || undefined,
       };
 
       if (editingEvent) {
@@ -171,10 +200,12 @@ export default function Timeline() {
     setIsModalOpen(true);
   }
 
+  const t = getThemeClasses(settings.theme);
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-rose-500" />
+        <div className={`animate-spin rounded-full h-10 w-10 border-b-2 ${t.loadingColor}`} />
       </div>
     );
   }
@@ -195,21 +226,21 @@ export default function Timeline() {
   }
 
   return (
-    <div className="h-full flex flex-col p-8 print:p-0 print:bg-white print:h-auto print-content">
+    <div className={`h-full flex flex-col p-8 ${t.pageBg} print:p-0 print:bg-white print:h-auto print-content`}>
       <div className="hidden print:block text-center mb-8">
-        <h1 className="text-3xl font-bold text-rose-500">LoveMemo</h1>
+        <h1 className={`text-3xl font-bold ${t.accent}`}>LoveMemo</h1>
         <p className="text-slate-500 mt-1">恋爱纪念册</p>
       </div>
 
       <div className="flex items-center justify-between mb-6 print:hidden">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">恋爱时间线</h2>
-          <p className="text-slate-500 mt-1">记录属于我们的每一个重要时刻</p>
+          <h2 className={`text-2xl font-bold ${t.title}`}>恋爱时间线</h2>
+          <p className={`${t.subtitle} mt-1`}>记录属于我们的每一个重要时刻</p>
         </div>
         <div className="flex items-center gap-3">
           <button
             onClick={handlePrint}
-            className="flex items-center gap-2 px-5 py-2.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors shadow-sm"
+            className={`flex items-center gap-2 px-5 py-2.5 bg-white border ${t.accentBorder} ${t.accent} ${t.accentBgHover} rounded-xl transition-colors shadow-sm`}
             title="会员专属：打印或保存为 PDF"
           >
             <Crown className="w-4 h-4 text-amber-500" />
@@ -218,7 +249,7 @@ export default function Timeline() {
           </button>
           <button
             onClick={openCreate}
-            className="flex items-center gap-2 px-5 py-2.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl transition-colors shadow-lg shadow-rose-200"
+            className={`flex items-center gap-2 px-5 py-2.5 text-white rounded-xl transition-colors shadow-lg ${t.buttonPrimary}`}
           >
             <Plus className="w-5 h-5" />
             <span>新增记录</span>
@@ -234,12 +265,12 @@ export default function Timeline() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="搜索标题、内容、地点或标签"
-            className="w-full pl-9 pr-9 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300 text-sm"
+            className={`w-full pl-9 pr-9 py-2 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing} text-sm`}
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500"
+              className={`absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 ${t.accentHover}`}
             >
               <X className="w-4 h-4" />
             </button>
@@ -249,20 +280,20 @@ export default function Timeline() {
           type="date"
           value={dateFrom}
           onChange={(e) => setDateFrom(e.target.value)}
-          className="px-3 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300 text-sm text-slate-600"
+          className={`px-3 py-2 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing} text-sm text-slate-600`}
         />
         <span className="text-slate-400 text-sm">至</span>
         <input
           type="date"
           value={dateTo}
           onChange={(e) => setDateTo(e.target.value)}
-          className="px-3 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300 text-sm text-slate-600"
+          className={`px-3 py-2 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing} text-sm text-slate-600`}
         />
         {allTags.length > 0 && (
           <select
             value={selectedTag}
             onChange={(e) => setSelectedTag(e.target.value)}
-            className="px-3 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300 text-sm text-slate-600 bg-white"
+            className={`px-3 py-2 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing} text-sm text-slate-600 bg-white`}
           >
             <option value="">所有标签</option>
             {allTags.map((tag) => (
@@ -280,7 +311,7 @@ export default function Timeline() {
               setDateTo("");
               setSelectedTag("");
             }}
-            className="px-3 py-2 text-sm text-rose-500 hover:bg-rose-50 rounded-xl transition-colors"
+            className={`px-3 py-2 text-sm ${t.accent} ${t.accentBgHover} rounded-xl transition-colors`}
           >
             清空筛选
           </button>
@@ -289,8 +320,8 @@ export default function Timeline() {
 
       {filteredEvents.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-          <div className="w-20 h-20 rounded-full bg-rose-100 flex items-center justify-center mb-4">
-            <Heart className="w-10 h-10 text-rose-400" />
+          <div className={`w-20 h-20 rounded-full ${t.emptyBg} flex items-center justify-center mb-4`}>
+            <Heart className={`w-10 h-10 ${t.emptyIcon}`} />
           </div>
           <p className="text-lg">
               {events.length === 0 ? "还没有记录哦" : "没有找到匹配的记录"}
@@ -303,16 +334,36 @@ export default function Timeline() {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto scrollbar-thin pr-2 print:overflow-visible print:pr-0">
-          <div className="relative pl-8 border-l-2 border-rose-200 space-y-8 print:border-rose-300 print:pl-8">
+          <div className={`relative pl-8 border-l-2 ${t.timelineLine} space-y-8 print:border-slate-300 print:pl-8`}>
             {filteredEvents.map((event) => (
-              <div key={event.id} className="relative group break-inside-avoid">
-                <div className="absolute -left-[41px] top-0 w-5 h-5 rounded-full bg-rose-400 border-4 border-white shadow print:bg-rose-500" />
-                <div className="bg-white rounded-2xl p-5 shadow-sm border border-rose-100 hover:shadow-md transition-shadow print:shadow-none print:border-rose-200">
+              <div
+                key={event.id}
+                ref={(el) => {
+                  eventRefs.current[event.id] = el;
+                }}
+                className="relative group break-inside-avoid"
+              >
+                <div className={`absolute -left-[41px] top-0 w-5 h-5 rounded-full ${t.timelineDot} border-4 border-white shadow print:bg-slate-400`} />
+                <div className={`bg-white rounded-2xl p-5 shadow-sm border ${t.cardBorder} hover:shadow-md transition-all print:shadow-none print:border-slate-200 ${
+                  highlightedEventId === event.id
+                    ? "ring-2 ring-offset-2 ring-amber-400 scale-[1.02]"
+                    : ""
+                }`}>
                   <div className="flex items-start justify-between">
                     <div>
-                      <div className="flex items-center gap-2 text-sm text-rose-500 font-medium">
+                      <div className={`flex items-center gap-2 text-sm ${t.accent} font-medium`}>
                         <Calendar className="w-4 h-4" />
                         {event.date}
+                        {event.mood && (
+                          <span className="text-base" title={MOOD_OPTIONS.find((o) => o.value === event.mood)?.label}>
+                            {MOOD_OPTIONS.find((o) => o.value === event.mood)?.icon}
+                          </span>
+                        )}
+                        {event.weather && (
+                          <span className="text-base" title={WEATHER_OPTIONS.find((o) => o.value === event.weather)?.label}>
+                            {WEATHER_OPTIONS.find((o) => o.value === event.weather)?.icon}
+                          </span>
+                        )}
                       </div>
                       <h3 className="text-lg font-bold text-slate-800 mt-1">
                         {event.title}
@@ -321,7 +372,7 @@ export default function Timeline() {
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">
                       <button
                         onClick={() => openEdit(event)}
-                        className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                        className={`p-2 text-slate-400 ${t.accentHover} ${t.accentBgHover} rounded-lg transition-colors`}
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
@@ -350,7 +401,7 @@ export default function Timeline() {
                       {mediaMap[event.id].map((item, idx) => (
                         <div
                           key={idx}
-                          className="w-24 h-24 rounded-xl overflow-hidden border border-rose-100"
+                          className={`w-24 h-24 rounded-xl overflow-hidden border ${t.cardBorder}`}
                         >
                           {item.type === "image" ? (
                             <img

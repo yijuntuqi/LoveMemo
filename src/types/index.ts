@@ -10,6 +10,8 @@ export interface MemoryEvent {
   tags?: string;
   coverImage?: string;
   showOnMap?: boolean;
+  mood?: string;
+  weather?: string;
   createdAt: string;
   updatedAt: string;
   updated_at?: string;
