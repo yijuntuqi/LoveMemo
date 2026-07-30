@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Save,
   Download,
   Upload,
   User,
@@ -11,12 +10,16 @@ import {
   Lock,
   Mail,
   MessageCircle,
+  AlertTriangle,
+  Trash2,
 } from "lucide-react";
 import {
   getSettings,
   saveSettings,
+  deleteSetting,
   exportAllData,
   importAllData,
+  clearAllData,
   type AppBackup,
 } from "../db";
 import {
@@ -25,20 +28,23 @@ import {
   saveTextFile,
   readTextFile,
 } from "../utils/file";
+import Modal from "../components/Modal";
 import type { AppSettings, UserInfo } from "../types";
 
 import { fetchUserInfo, activateMembership } from "../utils/api";
+import { THEMES, getThemeClasses } from "../utils/theme";
 import { open } from "@tauri-apps/plugin-dialog";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>({});
-  const [saved, setSaved] = useState(false);
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [activationCode, setActivationCode] = useState("");
   const [activateLoading, setActivateLoading] = useState(false);
   const [payTab, setPayTab] = useState<"wechat" | "alipay">("wechat");
+  const [clearAllConfirmOpen, setClearAllConfirmOpen] = useState(false);
+  const [clearAllLoading, setClearAllLoading] = useState(false);
   const initialLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -56,8 +62,6 @@ export default function SettingsPage() {
     const timer = setTimeout(() => {
       saveSettings(settings)
         .then(() => {
-          setSaved(true);
-          setTimeout(() => setSaved(false), 1500);
           window.dispatchEvent(new CustomEvent("lovememo-settings-changed"));
         })
         .catch(() => {
@@ -93,11 +97,8 @@ export default function SettingsPage() {
   async function saveAndNotify(next: Partial<AppSettings>) {
     const updated = { ...settings, ...next };
     setSettings(updated);
-    setSaved(false);
     try {
       await saveSettings(next);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 1500);
       window.dispatchEvent(new CustomEvent("lovememo-settings-changed"));
     } catch {
       // 手动保存兜底失败时由后续自动保存再尝试
@@ -106,18 +107,10 @@ export default function SettingsPage() {
 
   function handleChange(key: keyof AppSettings, value: string) {
     setSettings((prev) => ({ ...prev, [key]: value }));
-    setSaved(false);
     // 日期选择后立刻保存并通知，确保左下角天数即时刷新
     if (key === "startDate") {
       void saveAndNotify({ [key]: value });
     }
-  }
-
-  async function handleSave() {
-    await saveSettings(settings);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-    window.dispatchEvent(new CustomEvent("lovememo-settings-changed"));
   }
 
   async function handleExportBackup() {
@@ -153,6 +146,20 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleClearAll() {
+    setClearAllLoading(true);
+    try {
+      await clearAllData();
+      setClearAllConfirmOpen(false);
+      alert("所有记录已清空，页面将刷新");
+      window.location.reload();
+    } catch (e) {
+      alert("清空失败: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setClearAllLoading(false);
+    }
+  }
+
   async function handlePickMediaPath() {
     try {
       const selected = await open({
@@ -167,8 +174,18 @@ export default function SettingsPage() {
   }
 
   async function handleLogout() {
-    await saveAndNotify({ authToken: undefined });
+    // 只删除登录凭证，保留本地数据和 _lastUserId
+    // 这样同一账号重新登录时数据还在；切换到不同账号时由 AuthGate 清理
+    await deleteSetting("authToken");
+    await deleteSetting("_userInfo");
+    setSettings((prev) => {
+      const next = { ...prev };
+      delete next.authToken;
+      delete next._userInfo;
+      return next;
+    });
     setUserInfo(null);
+    window.dispatchEvent(new CustomEvent("lovememo-settings-changed"));
   }
 
   async function handleActivate() {
@@ -207,24 +224,53 @@ export default function SettingsPage() {
     "专属情侣主题",
   ];
 
+  function getMembershipStatus(user: UserInfo | null) {
+    if (!user || user.membership_type !== "premium") {
+      return {
+        isPremium: false,
+        isExpiringSoon: false,
+        isExpired: false,
+        daysLeft: null,
+      };
+    }
+    if (!user.membership_expires_at) {
+      return {
+        isPremium: true,
+        isExpiringSoon: false,
+        isExpired: false,
+        daysLeft: null,
+      };
+    }
+    const expires = new Date(user.membership_expires_at);
+    const now = new Date();
+    const daysLeft = Math.floor(
+      (expires.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+    );
+    return {
+      isPremium: true,
+      isExpiringSoon: daysLeft >= 0 && daysLeft <= 7,
+      isExpired: daysLeft < 0,
+      daysLeft,
+    };
+  }
+
+  const membershipStatus = getMembershipStatus(userInfo);
+  const showRenewal =
+    !membershipStatus.isPremium ||
+    membershipStatus.isExpiringSoon ||
+    membershipStatus.isExpired;
+
+  const t = getThemeClasses(settings.theme);
+
   return (
-    <div className="h-full flex flex-col p-8 overflow-y-auto scrollbar-thin">
-      <div className="mb-8 flex items-start justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800">设置</h2>
-          <p className="text-slate-500 mt-1">管理你们的信息</p>
-        </div>
-        <button
-          onClick={handleSave}
-          className="flex items-center gap-2 px-5 py-2.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl transition-colors shadow-lg shadow-rose-200"
-        >
-          <Save className="w-5 h-5" />
-          <span>{saved ? "已保存" : "保存设置"}</span>
-        </button>
+    <div className={`h-full flex flex-col p-8 overflow-y-auto scrollbar-thin ${t.pageBg}`}>
+      <div className="mb-8">
+        <h2 className={`text-2xl font-bold ${t.title}`}>设置</h2>
+        <p className={`${t.subtitle} mt-1`}>自定义你们的 LoveMemo</p>
       </div>
 
-      <div className="max-w-2xl space-y-6">
-        <section className="bg-white rounded-2xl p-6 shadow-sm border border-rose-100">
+      <div className="space-y-6 max-w-4xl">
+        <section className={`bg-white rounded-2xl p-6 shadow-sm border ${t.cardBorder}`}>
           <h3 className="text-lg font-bold text-slate-800 mb-4">恋爱信息</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -235,7 +281,7 @@ export default function SettingsPage() {
                 type="text"
                 value={settings.coupleName || ""}
                 onChange={(e) => handleChange("coupleName", e.target.value)}
-                className="w-full px-4 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                className={`w-full px-4 py-2 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing}`}
                 placeholder="例如：小异 & 萱萱"
               />
             </div>
@@ -247,7 +293,7 @@ export default function SettingsPage() {
                 type="date"
                 value={settings.startDate || ""}
                 onChange={(e) => handleChange("startDate", e.target.value)}
-                className="w-full px-4 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                className={`w-full px-4 py-2 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing}`}
               />
             </div>
             <div>
@@ -258,7 +304,7 @@ export default function SettingsPage() {
                 type="text"
                 value={settings.myName || ""}
                 onChange={(e) => handleChange("myName", e.target.value)}
-                className="w-full px-4 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                className={`w-full px-4 py-2 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing}`}
               />
             </div>
             <div>
@@ -269,21 +315,47 @@ export default function SettingsPage() {
                 type="text"
                 value={settings.partnerName || ""}
                 onChange={(e) => handleChange("partnerName", e.target.value)}
-                className="w-full px-4 py-2 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                className={`w-full px-4 py-2 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing}`}
               />
             </div>
           </div>
         </section>
 
-        <section className="bg-white rounded-2xl p-6 shadow-sm border border-rose-100">
+        <section className={`bg-white rounded-2xl p-6 shadow-sm border ${t.cardBorder}`}>
+          <h3 className="text-lg font-bold text-slate-800 mb-4">外观主题</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {THEMES.map((theme) => {
+              const classes = getThemeClasses(theme.key);
+              const selected = (settings.theme || "rose") === theme.key;
+              return (
+                <button
+                  key={theme.key}
+                  onClick={() => handleChange("theme", theme.key)}
+                  className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${
+                    selected
+                      ? `${classes.accentBg} ${classes.accentBorder} ring-2 ${classes.accentBorder.replace("border", "ring")}`
+                      : `border-slate-200 hover:${t.accentBorder} ${t.accentBgHover}`
+                  }`}
+                >
+                  <span className="text-2xl">{theme.emoji}</span>
+                  <span className="text-sm font-medium text-slate-700">
+                    {theme.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className={`bg-white rounded-2xl p-6 shadow-sm border ${t.cardBorder}`}>
           <div className="flex items-center gap-3 mb-4">
-            <User className="w-5 h-5 text-rose-500" />
+            <User className={`w-5 h-5 ${t.accent}`} />
             <h3 className="text-lg font-bold text-slate-800">账号</h3>
           </div>
 
           {userInfo ? (
             <div className="space-y-4">
-              <div className="p-4 bg-rose-50 rounded-xl border border-rose-100">
+              <div className={`p-4 ${t.accentBg} rounded-xl border ${t.cardBorder}`}>
                 <p className="text-sm text-slate-500">当前登录</p>
                 <p className="font-semibold text-slate-800">{userInfo.phone}</p>
                 {userInfo.email && (
@@ -321,7 +393,7 @@ export default function SettingsPage() {
           )}
         </section>
 
-        <section className="bg-white rounded-2xl p-6 shadow-sm border border-rose-100">
+        <section className={`bg-white rounded-2xl p-6 shadow-sm border ${t.cardBorder}`}>
           <h3 className="text-lg font-bold text-slate-800 mb-4">数据管理</h3>
           <p className="text-sm text-slate-500 mb-4">
             将所有恋爱记录导出为 JSON 文件备份，或在更换设备时导入恢复。
@@ -330,7 +402,7 @@ export default function SettingsPage() {
             <button
               onClick={handleExportBackup}
               disabled={backupLoading}
-              className="flex items-center gap-2 px-5 py-2.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors disabled:opacity-50"
+              className={`flex items-center gap-2 px-5 py-2.5 bg-white border ${t.accentBorder} ${t.accent} ${t.accentBgHover} rounded-xl transition-colors disabled:opacity-50`}
             >
               <Download className="w-4 h-4" />
               <span>{backupLoading ? "导出中..." : "导出备份"}</span>
@@ -338,17 +410,25 @@ export default function SettingsPage() {
             <button
               onClick={handleImportBackup}
               disabled={restoreLoading}
-              className="flex items-center gap-2 px-5 py-2.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors disabled:opacity-50"
+              className={`flex items-center gap-2 px-5 py-2.5 bg-white border ${t.accentBorder} ${t.accent} ${t.accentBgHover} rounded-xl transition-colors disabled:opacity-50`}
             >
               <Upload className="w-4 h-4" />
               <span>{restoreLoading ? "导入中..." : "导入恢复"}</span>
             </button>
+            <button
+              onClick={() => setClearAllConfirmOpen(true)}
+              disabled={clearAllLoading}
+              className="flex items-center gap-2 px-5 py-2.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-50"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>{clearAllLoading ? "清空中..." : "清空全部"}</span>
+            </button>
           </div>
         </section>
 
-        <section className="bg-white rounded-2xl p-6 shadow-sm border border-rose-100">
+        <section className={`bg-white rounded-2xl p-6 shadow-sm border ${t.cardBorder}`}>
           <div className="flex items-center gap-3 mb-4">
-            <FolderOpen className="w-5 h-5 text-rose-500" />
+            <FolderOpen className={`w-5 h-5 ${t.accent}`} />
             <h3 className="text-lg font-bold text-slate-800">本地存储</h3>
           </div>
           <p className="text-sm text-slate-500 mb-4">
@@ -361,12 +441,12 @@ export default function SettingsPage() {
                 value={settings.mediaStoragePath || ""}
                 readOnly
                 placeholder="默认保存在应用数据目录"
-                className="flex-1 px-4 py-2 rounded-xl border border-rose-200 bg-slate-50 text-slate-600 text-sm focus:outline-none"
+                className={`flex-1 px-4 py-2 rounded-xl border ${t.accentBorder} bg-slate-50 text-slate-600 text-sm focus:outline-none`}
               />
               <button
                 type="button"
                 onClick={handlePickMediaPath}
-                className="px-4 py-2 bg-rose-100 text-rose-600 rounded-xl hover:bg-rose-200 transition-colors text-sm font-medium"
+                className={`px-4 py-2 ${t.accentBg} ${t.accent} rounded-xl ${t.accentBgHover} transition-colors text-sm font-medium`}
               >
                 选择目录
               </button>
@@ -387,25 +467,50 @@ export default function SettingsPage() {
             <div>
               <h3 className="text-lg font-bold text-slate-800">会员中心</h3>
               <p className="text-xs text-slate-500">
-                {userInfo?.membership_type === "premium"
-                  ? "当前为会员版"
-                  : "当前为免费版"}
+                {membershipStatus.isExpired
+                  ? "会员已过期，请及时续费"
+                  : membershipStatus.isExpiringSoon
+                    ? `会员即将到期，还剩 ${membershipStatus.daysLeft} 天`
+                    : membershipStatus.isPremium
+                      ? "当前为会员版"
+                      : "当前为免费版"}
               </p>
             </div>
           </div>
+
+          {showRenewal && (
+            <div className="mb-5 p-3 bg-white/80 rounded-xl border border-amber-200 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-slate-700">
+                  {membershipStatus.isExpired
+                    ? "会员权益已暂停"
+                    : membershipStatus.isExpiringSoon
+                      ? "会员权益即将暂停"
+                      : "解锁更多专属功能"}
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {membershipStatus.isExpired || membershipStatus.isExpiringSoon
+                    ? "续费后即可继续享受会员权益"
+                    : "开通会员后可使用 AI 润色、无水印导出等高级功能"}
+                </p>
+              </div>
+            </div>
+          )}
+
           <ul className="space-y-2 mb-5">
             {membershipBenefits.map((benefit) => (
               <li
                 key={benefit}
                 className="flex items-center gap-2 text-sm text-slate-600"
               >
-                <Check className="w-4 h-4 text-rose-500" />
+                <Check className={`w-4 h-4 ${t.accent}`} />
                 {benefit}
               </li>
             ))}
           </ul>
 
-          {userInfo?.membership_type !== "premium" && (
+          {showRenewal && (
             <div className="bg-white rounded-xl p-4 border border-amber-100 mb-5">
               <p className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-1.5">
                 <QrCode className="w-4 h-4" />
@@ -447,28 +552,28 @@ export default function SettingsPage() {
                 <p className="text-xs text-slate-500 mb-2">付款后请按以下步骤获取激活码：</p>
                 <div className="space-y-2">
                   <p className="text-sm text-slate-700 flex items-start gap-2">
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-rose-100 text-rose-600 text-xs flex items-center justify-center font-medium">1</span>
+                    <span className={`flex-shrink-0 w-5 h-5 rounded-full ${t.accentBg} ${t.accent} text-xs flex items-center justify-center font-medium`}>1</span>
                     <span>扫描上方二维码完成付款</span>
                   </p>
                   <p className="text-sm text-slate-700 flex items-start gap-2">
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-rose-100 text-rose-600 text-xs flex items-center justify-center font-medium">2</span>
+                    <span className={`flex-shrink-0 w-5 h-5 rounded-full ${t.accentBg} ${t.accent} text-xs flex items-center justify-center font-medium`}>2</span>
                     <span>将转账单号发送至以下联系方式</span>
                   </p>
                   <div className="pl-7 space-y-1.5">
                     <a
                       href="mailto:202411109014@mail.bnu.edu.cn"
-                      className="flex items-center gap-2 text-sm text-rose-600 hover:text-rose-700"
+                      className={`flex items-center gap-2 text-sm ${t.accent} ${t.accentHover}`}
                     >
                       <Mail className="w-4 h-4" />
                       <span>202411109014@mail.bnu.edu.cn</span>
                     </a>
-                    <p className="flex items-center gap-2 text-sm text-rose-600">
+                    <p className={`flex items-center gap-2 text-sm ${t.accent}`}>
                       <MessageCircle className="w-4 h-4" />
                       <span>微信号：zy17796591211</span>
                     </p>
                   </div>
                   <p className="text-sm text-slate-700 flex items-start gap-2">
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-rose-100 text-rose-600 text-xs flex items-center justify-center font-medium">3</span>
+                    <span className={`flex-shrink-0 w-5 h-5 rounded-full ${t.accentBg} ${t.accent} text-xs flex items-center justify-center font-medium`}>3</span>
                     <span>获取激活码并输入下方文本框</span>
                   </p>
                 </div>
@@ -502,6 +607,43 @@ export default function SettingsPage() {
           </div>
         </section>
       </div>
+
+      <Modal
+        isOpen={clearAllConfirmOpen}
+        onClose={() => setClearAllConfirmOpen(false)}
+        title="确认清空全部数据"
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-3 bg-red-50 rounded-xl border border-red-100">
+            <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm text-slate-700">
+                这将删除所有恋爱记录、媒体和纪念日，且无法恢复。
+              </p>
+              <p className="text-xs text-slate-500 mt-1">
+                建议先导出备份。账号登录信息不会被清除。
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              onClick={() => setClearAllConfirmOpen(false)}
+              disabled={clearAllLoading}
+              className="px-5 py-2 rounded-xl text-slate-600 hover:bg-slate-100 transition-colors text-sm disabled:opacity-50"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleClearAll}
+              disabled={clearAllLoading}
+              className="px-5 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors text-sm shadow-lg shadow-red-200 disabled:opacity-50"
+            >
+              {clearAllLoading ? "清空中..." : "确认清空"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

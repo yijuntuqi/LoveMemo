@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Heart,
   Calendar,
@@ -17,6 +18,7 @@ import {
   getMediaByEventId,
 } from "../db";
 import { getMediaUrl } from "../utils/media";
+import { getThemeClasses } from "../utils/theme";
 import type {
   AppSettings,
   MemoryEvent,
@@ -25,6 +27,7 @@ import type {
 } from "../types";
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [settings, setSettings] = useState<AppSettings>({});
   const [stats, setStats] = useState({
     eventCount: 0,
@@ -66,27 +69,29 @@ export default function Dashboard() {
   const myName = settings.myName || "";
   const partnerName = settings.partnerName || "";
 
+  const t = getThemeClasses(settings.theme);
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-rose-500" />
+        <div className={`animate-spin rounded-full h-10 w-10 border-b-2 ${t.loadingColor}`} />
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col p-8 overflow-y-auto scrollbar-thin">
+    <div className={`h-full flex flex-col p-8 overflow-y-auto scrollbar-thin ${t.pageBg}`}>
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-slate-800">
+        <h2 className={`text-2xl font-bold ${t.title}`}>
           你好，{myName || coupleName}
         </h2>
-        <p className="text-slate-500 mt-1">
+        <p className={`${t.subtitle} mt-1`}>
           {partnerName ? `与 ${partnerName} 的恋爱纪念册` : "记录每一个心动瞬间"}
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        <div className="lg:col-span-2 bg-gradient-to-br from-rose-400 to-pink-500 rounded-3xl p-8 text-white shadow-lg shadow-rose-200">
+        <div className={`lg:col-span-2 bg-gradient-to-br ${t.heroGradient} rounded-3xl p-8 text-white shadow-lg ${t.heroShadow}`}>
           <div className="flex items-center gap-3 mb-4">
             <Heart className="w-6 h-6 fill-white" />
             <span className="font-medium opacity-90">已相恋</span>
@@ -102,18 +107,18 @@ export default function Dashboard() {
         </div>
 
         <div className="grid grid-cols-1 gap-6">
-          <div className="bg-white rounded-3xl p-6 shadow-sm border border-rose-100 flex items-center gap-5">
-            <div className="w-14 h-14 rounded-2xl bg-rose-100 flex items-center justify-center">
-              <Calendar className="w-7 h-7 text-rose-500" />
+          <div className={`bg-white rounded-3xl p-6 shadow-sm border ${t.cardBorder} flex items-center gap-5`}>
+            <div className={`w-14 h-14 rounded-2xl ${t.accentBg} flex items-center justify-center`}>
+              <Calendar className={`w-7 h-7 ${t.accent}`} />
             </div>
             <div>
               <p className="text-3xl font-bold text-slate-800">{stats.eventCount}</p>
               <p className="text-slate-500">故事记录</p>
             </div>
           </div>
-          <div className="bg-white rounded-3xl p-6 shadow-sm border border-rose-100 flex items-center gap-5">
-            <div className="w-14 h-14 rounded-2xl bg-pink-100 flex items-center justify-center">
-              <Image className="w-7 h-7 text-pink-500" />
+          <div className={`bg-white rounded-3xl p-6 shadow-sm border ${t.cardBorder} flex items-center gap-5`}>
+            <div className={`w-14 h-14 rounded-2xl ${t.accentBg} flex items-center justify-center`}>
+              <Image className={`w-7 h-7 ${t.accent}`} />
             </div>
             <div>
               <p className="text-3xl font-bold text-slate-800">{stats.mediaCount}</p>
@@ -124,43 +129,43 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-3xl p-6 shadow-sm border border-rose-100">
+        <div className={`lg:col-span-2 bg-white rounded-3xl p-6 shadow-sm border ${t.cardBorder}`}>
           <div className="flex items-center justify-between mb-5">
             <h3 className="text-lg font-bold text-slate-800">最近的故事</h3>
-            <a
-              href="#/timeline"
-              className="flex items-center gap-1 text-sm text-rose-500 hover:text-rose-600"
+            <button
+              onClick={() => navigate("/timeline")}
+              className={`flex items-center gap-1 text-sm ${t.accent} ${t.accentHover}`}
             >
               查看全部 <ChevronRight className="w-4 h-4" />
-            </a>
+            </button>
           </div>
 
           {recentEvents.length === 0 ? (
             <div className="text-center py-10 text-slate-400">
-              <Heart className="w-10 h-10 mx-auto mb-2 text-rose-200" />
+              <Heart className={`w-10 h-10 mx-auto mb-2 ${t.emptyIcon}`} />
               <p>还没有记录，去时间线添加第一条吧</p>
             </div>
           ) : (
             <div className="space-y-4">
               {recentEvents.map((event) => (
-                <a
+                <div
                   key={event.id}
-                  href="#/timeline"
-                  className="flex gap-4 p-4 rounded-2xl hover:bg-rose-50 transition-colors group"
+                  onClick={() => navigate("/timeline")}
+                  className={`flex gap-4 p-4 rounded-2xl ${t.accentBgHover} transition-colors group cursor-pointer`}
                 >
                   {mediaMap[event.id]?.[0]?.type === "image" ? (
                     <img
                       src={getMediaUrl(mediaMap[event.id][0].path)}
                       alt=""
-                      className="w-20 h-20 rounded-xl object-cover border border-rose-100 flex-shrink-0"
+                      className={`w-20 h-20 rounded-xl object-cover border ${t.cardBorder} flex-shrink-0`}
                     />
                   ) : (
-                    <div className="w-20 h-20 rounded-xl bg-rose-100 flex items-center justify-center flex-shrink-0">
-                      <Calendar className="w-8 h-8 text-rose-300" />
+                    <div className={`w-20 h-20 rounded-xl ${t.emptyBg} flex items-center justify-center flex-shrink-0`}>
+                      <Calendar className={`w-8 h-8 ${t.emptyIcon}`} />
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 text-sm text-rose-500 font-medium">
+                    <div className={`flex items-center gap-2 text-sm ${t.accent} font-medium`}>
                       <Calendar className="w-4 h-4" />
                       {event.date}
                     </div>
@@ -177,26 +182,26 @@ export default function Dashboard() {
                       </p>
                     )}
                   </div>
-                </a>
+                </div>
               ))}
             </div>
           )}
         </div>
 
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-rose-100">
+        <div className={`bg-white rounded-3xl p-6 shadow-sm border ${t.cardBorder}`}>
           <div className="flex items-center justify-between mb-5">
             <h3 className="text-lg font-bold text-slate-800">即将到来的纪念日</h3>
-            <a
-              href="#/anniversaries"
-              className="flex items-center gap-1 text-sm text-rose-500 hover:text-rose-600"
+            <button
+              onClick={() => navigate("/anniversaries")}
+              className={`flex items-center gap-1 text-sm ${t.accent} ${t.accentHover}`}
             >
               全部 <ChevronRight className="w-4 h-4" />
-            </a>
+            </button>
           </div>
 
           {upcoming.length === 0 ? (
             <div className="text-center py-10 text-slate-400">
-              <Gift className="w-10 h-10 mx-auto mb-2 text-rose-200" />
+              <Gift className={`w-10 h-10 mx-auto mb-2 ${t.emptyIcon}`} />
               <p>还没有纪念日，去添加一个吧</p>
             </div>
           ) : (
@@ -204,7 +209,7 @@ export default function Dashboard() {
               {upcoming.map((item) => (
                 <div
                   key={item.id}
-                  className="p-4 rounded-2xl bg-rose-50 border border-rose-100"
+                  className={`p-4 rounded-2xl ${t.accentBg} border ${t.accentBorder}`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium text-slate-600">
@@ -222,7 +227,7 @@ export default function Dashboard() {
                         ? "礼物"
                         : "纪念日"}
                     </span>
-                    <span className="text-xs px-2 py-1 bg-white rounded-full text-rose-500 font-medium">
+                    <span className={`text-xs px-2 py-1 bg-white rounded-full ${t.accent} font-medium`}>
                       {item.daysUntil === 0
                         ? "今天"
                         : item.daysUntil === 1

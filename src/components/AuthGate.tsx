@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Heart, Lock, Mail, Eye, EyeOff, Phone } from "lucide-react";
-import { getSettings, saveSettings } from "../db";
+import { getSettings, saveSettings, clearAllData } from "../db";
 import { register, login, fetchUserInfo } from "../utils/api";
 import { fetch } from "../utils/http";
+import { getThemeClasses } from "../utils/theme";
 import type { AppSettings, UserInfo, AuthResponse } from "../types";
 
 interface AuthGateProps {
@@ -65,11 +66,55 @@ export default function AuthGate({ children }: AuthGateProps) {
     init();
   }, []);
 
+  // 监听设置变化：退出登录后 token 被清空，立即回到登录页
+  useEffect(() => {
+    async function refresh() {
+      const s = await getSettings();
+      setSettings(s as AppSettings);
+      if (s.authToken) {
+        try {
+          const info = await fetchUserInfo(s as AppSettings);
+          setUserInfo(info);
+        } catch {
+          setUserInfo(null);
+        }
+      } else {
+        setUserInfo(null);
+      }
+    }
+    window.addEventListener("lovememo-settings-changed", refresh);
+    return () => window.removeEventListener("lovememo-settings-changed", refresh);
+  }, []);
+
   async function persistAuth(token: string, user: UserInfo) {
-    const next = { ...settings, authToken: token, _userInfo: JSON.stringify(user) };
+    const current = await getSettings();
+    // 如果登录的是不同账号，清空旧账号的本地数据，避免新账号看到别人的记录
+    if (current._lastUserId && current._lastUserId !== user.id) {
+      await clearAllData();
+      await saveSettings({
+        coupleName: "",
+        startDate: "",
+        myName: "",
+        partnerName: "",
+      });
+    }
+    const next: AppSettings = {
+      ...settings,
+      authToken: token,
+      _userInfo: JSON.stringify(user),
+      _lastUserId: user.id,
+      coupleName: current._lastUserId && current._lastUserId !== user.id ? "" : settings.coupleName,
+      startDate: current._lastUserId && current._lastUserId !== user.id ? "" : settings.startDate,
+      myName: current._lastUserId && current._lastUserId !== user.id ? "" : settings.myName,
+      partnerName: current._lastUserId && current._lastUserId !== user.id ? "" : settings.partnerName,
+    };
     setSettings(next);
     setUserInfo(user);
-    await saveSettings({ authToken: token, _userInfo: JSON.stringify(user) });
+    await saveSettings({
+      authToken: token,
+      _userInfo: JSON.stringify(user),
+      _lastUserId: user.id,
+    });
     window.dispatchEvent(new CustomEvent("lovememo-settings-changed"));
   }
 
@@ -100,11 +145,13 @@ export default function AuthGate({ children }: AuthGateProps) {
     }
   }
 
+  const t = getThemeClasses(settings.theme);
+
   if (serverChecking) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-rose-50">
+      <div className={`h-full w-full flex items-center justify-center ${t.pageBg}`}>
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rose-500 mx-auto" />
+          <div className={`animate-spin rounded-full h-12 w-12 border-b-2 ${t.loadingColor} mx-auto`} />
           <p className="mt-4 text-slate-500">正在连接 LoveMemo 服务...</p>
         </div>
       </div>
@@ -113,10 +160,10 @@ export default function AuthGate({ children }: AuthGateProps) {
 
   if (!serverOk) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-rose-50 p-8">
-        <div className="max-w-md w-full bg-white rounded-2xl p-8 shadow-lg border border-rose-100 text-center">
-          <div className="w-16 h-16 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-4">
-            <Heart className="w-8 h-8 text-rose-500" />
+      <div className={`h-full w-full flex items-center justify-center ${t.pageBg} p-8`}>
+        <div className={`max-w-md w-full bg-white rounded-2xl p-8 shadow-lg border ${t.cardBorder} text-center`}>
+          <div className={`w-16 h-16 rounded-full ${t.accentBg} flex items-center justify-center mx-auto mb-4`}>
+            <Heart className={`w-8 h-8 ${t.accent}`} />
           </div>
           <h2 className="text-2xl font-bold text-slate-800 mb-2">LoveMemo</h2>
           <p className="text-slate-500 mb-6">无法连接到后端服务</p>
@@ -129,7 +176,7 @@ export default function AuthGate({ children }: AuthGateProps) {
           </code>
           <button
             onClick={() => window.location.reload()}
-            className="px-6 py-2.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl transition-colors"
+            className={`px-6 py-2.5 text-white rounded-xl transition-colors ${t.buttonPrimary}`}
           >
             我已启动服务，刷新
           </button>
@@ -143,24 +190,24 @@ export default function AuthGate({ children }: AuthGateProps) {
   }
 
   return (
-    <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-rose-50 to-pink-100 p-6">
-      <div className="w-full max-w-md bg-white rounded-2xl p-8 shadow-xl border border-rose-100">
+    <div className={`h-full w-full flex items-center justify-center ${t.pageBg} p-6`}>
+      <div className={`w-full max-w-md bg-white rounded-2xl p-8 shadow-xl border ${t.cardBorder}`}>
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-rose-200">
+          <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${t.heroGradient} flex items-center justify-center mx-auto mb-4 shadow-lg ${t.heroShadow}`}>
             <Heart className="w-8 h-8 text-white fill-white" />
           </div>
           <h1 className="text-2xl font-bold text-slate-800">LoveMemo</h1>
           <p className="text-slate-500 mt-1">恋爱纪念册</p>
         </div>
 
-        <div className="flex rounded-xl bg-rose-50 p-1 mb-6">
+        <div className={`flex rounded-xl ${t.accentBg} p-1 mb-6`}>
           <button
             type="button"
             onClick={() => setMode("login")}
             className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
               mode === "login"
-                ? "bg-white text-rose-600 shadow-sm"
-                : "text-slate-500 hover:text-rose-500"
+                ? `bg-white ${t.accent} shadow-sm`
+                : `text-slate-500 ${t.accentHover}`
             }`}
           >
             登录
@@ -170,8 +217,8 @@ export default function AuthGate({ children }: AuthGateProps) {
             onClick={() => setMode("register")}
             className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
               mode === "register"
-                ? "bg-white text-rose-600 shadow-sm"
-                : "text-slate-500 hover:text-rose-500"
+                ? `bg-white ${t.accent} shadow-sm`
+                : `text-slate-500 ${t.accentHover}`
             }`}
           >
             注册
@@ -181,7 +228,7 @@ export default function AuthGate({ children }: AuthGateProps) {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="block text-sm font-medium text-slate-600 mb-1">
-              手机号 <span className="text-rose-500">*</span>
+              手机号 <span className={t.accent}>*</span>
             </label>
             <div className="relative">
               <Phone className="absolute left-3 top-2.5 w-5 h-5 text-slate-400" />
@@ -189,7 +236,7 @@ export default function AuthGate({ children }: AuthGateProps) {
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing}`}
                 placeholder="请输入手机号"
                 required
               />
@@ -207,7 +254,7 @@ export default function AuthGate({ children }: AuthGateProps) {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing}`}
                   placeholder="选填，用于找回密码"
                 />
               </div>
@@ -224,7 +271,7 @@ export default function AuthGate({ children }: AuthGateProps) {
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-rose-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                className={`w-full pl-10 pr-10 py-2.5 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing}`}
                 placeholder="至少 6 位"
                 required
                 minLength={6}
@@ -232,7 +279,7 @@ export default function AuthGate({ children }: AuthGateProps) {
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-3 top-2.5 text-slate-400 hover:text-rose-500"
+                className={`absolute right-3 top-2.5 text-slate-400 ${t.accentHover}`}
               >
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
@@ -242,7 +289,7 @@ export default function AuthGate({ children }: AuthGateProps) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 bg-rose-500 hover:bg-rose-600 disabled:opacity-60 text-white rounded-xl transition-colors font-medium shadow-lg shadow-rose-200"
+            className={`w-full py-2.5 disabled:opacity-60 text-white rounded-xl transition-colors font-medium shadow-lg ${t.heroShadow} ${t.buttonPrimary}`}
           >
             {loading ? "请稍候..." : mode === "login" ? "登录" : "注册"}
           </button>

@@ -19,15 +19,26 @@ import RecycleBin from "./pages/RecycleBin";
 import Statistics from "./pages/Statistics";
 import SettingsPage from "./pages/Settings";
 import AuthGate from "./components/AuthGate";
-import { getSettings } from "./db";
+import ErrorBoundary from "./components/ErrorBoundary";
+import { getSettings, cleanupDeletedRecords } from "./db";
 import { checkAndNotifyAnniversaries } from "./utils/notification";
+import { getThemeClasses } from "./utils/theme";
 import type { AppSettings } from "./types";
 
 function App() {
   const [settings, setSettings] = useState<AppSettings>({});
 
   useEffect(() => {
-    getSettings().then((s) => setSettings(s as AppSettings));
+    getSettings().then((s) => {
+      const loaded = s as AppSettings;
+      setSettings(loaded);
+
+      // 启动后自动清理回收站中超过保留期的数据
+      const retentionDays = Number(loaded.recycleBinRetentionDays) || 30;
+      cleanupDeletedRecords(retentionDays).catch(() => {
+        // 清理失败不打扰用户
+      });
+    });
 
     function refreshSettings() {
       getSettings().then((s) => setSettings(s as AppSettings));
@@ -64,15 +75,17 @@ function App() {
     return Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
   }
 
+  const t = getThemeClasses(settings.theme);
+
   return (
-    <div className="flex h-full bg-rose-50/50 print:block">
-      <aside className="w-64 flex-shrink-0 bg-white/80 backdrop-blur border-r border-rose-100 flex flex-col print:hidden">
+    <div className={`flex h-full ${t.pageBg} print:block`}>
+      <aside className={`w-64 flex-shrink-0 bg-white/80 backdrop-blur border-r ${t.cardBorder} flex flex-col print:hidden`}>
         <div className="p-6 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center shadow-lg shadow-rose-200">
+          <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${t.heroGradient} flex items-center justify-center shadow-lg ${t.heroShadow}`}>
             <Heart className="w-5 h-5 text-white fill-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-rose-500 to-pink-600 bg-clip-text text-transparent">
+            <h1 className={`text-xl font-bold bg-gradient-to-r ${t.heroGradient} bg-clip-text text-transparent`}>
               LoveMemo
             </h1>
             <p className="text-xs text-slate-400">恋爱纪念册</p>
@@ -88,8 +101,8 @@ function App() {
               className={({ isActive }) =>
                 `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
                   isActive
-                    ? "bg-rose-100 text-rose-600 font-medium shadow-sm"
-                    : "text-slate-600 hover:bg-rose-50 hover:text-rose-500"
+                    ? `${t.accentBg} ${t.accent} font-medium shadow-sm`
+                    : `text-slate-600 ${t.accentBgHover} ${t.accentHover}`
                 }`
               }
             >
@@ -99,14 +112,14 @@ function App() {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-rose-100">
-          <div className="bg-gradient-to-br from-rose-100 to-pink-100 rounded-xl p-4">
-            <p className="text-sm font-medium text-rose-700">已相恋</p>
-            <p className="text-2xl font-bold text-rose-600 mt-1">
+        <div className={`p-4 border-t ${t.cardBorder}`}>
+          <div className={`bg-gradient-to-br ${t.accentBg} to-white rounded-xl p-4`}>
+            <p className={`text-sm font-medium ${t.accent}`}>已相恋</p>
+            <p className={`text-2xl font-bold ${t.accent} mt-1`}>
               {daysTogether() !== null ? `${daysTogether()} 天` : "-- 天"}
             </p>
             {settings.coupleName && (
-              <p className="text-xs text-rose-500 mt-1 truncate">
+              <p className={`text-xs ${t.accent} mt-1 truncate opacity-80`}>
                 {settings.coupleName}
               </p>
             )}
@@ -115,18 +128,20 @@ function App() {
       </aside>
 
       <main className="flex-1 overflow-hidden print:overflow-visible print:h-auto">
-        <AuthGate>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/timeline" element={<Timeline />} />
-            <Route path="/gallery" element={<Gallery />} />
-            <Route path="/map" element={<MemoryMap />} />
-            <Route path="/anniversaries" element={<Anniversaries />} />
-            <Route path="/statistics" element={<Statistics />} />
-            <Route path="/recycle" element={<RecycleBin />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Routes>
-        </AuthGate>
+        <ErrorBoundary>
+          <AuthGate>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/timeline" element={<Timeline />} />
+              <Route path="/gallery" element={<Gallery />} />
+              <Route path="/map" element={<MemoryMap />} />
+              <Route path="/anniversaries" element={<Anniversaries />} />
+              <Route path="/statistics" element={<Statistics />} />
+              <Route path="/recycle" element={<RecycleBin />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Routes>
+          </AuthGate>
+        </ErrorBoundary>
       </main>
     </div>
   );

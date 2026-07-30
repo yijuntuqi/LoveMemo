@@ -105,7 +105,7 @@ pub async fn activate(
 
     // 更新用户会员信息
     let user: UserInfo = sqlx::query_as::<_, UserInfo>(
-        "UPDATE lovememo_users SET membership_type = $1, membership_expires_at = $2, updated_at = now()\n         WHERE id = $3\n         RETURNING id, phone, email, nickname, avatar_url, membership_type, membership_expires_at, created_at",
+        "UPDATE lovememo_users SET membership_type = $1, membership_expires_at = $2, updated_at = now()\n         WHERE id = $3\n         RETURNING id, phone, email, membership_type, membership_expires_at",
     )
     .bind(&membership_type)
     .bind(expires_at)
