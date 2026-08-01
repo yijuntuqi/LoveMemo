@@ -1,3 +1,7 @@
+use lettre::{
+    message::header::ContentType, transport::smtp::authentication::Credentials, AsyncSmtpTransport,
+    AsyncTransport, Message, Tokio1Executor,
+};
 use reqwest::Client;
 use serde_json::json;
 use tracing::{error, info};
@@ -34,10 +38,17 @@ fn parse_from_email(from: &str) -> EmailAddress {
 }
 
 /// 发送欢迎邮件。
-/// 优先使用 SendGrid；未配置则尝试 Resend；两者都未配置则静默跳过，不影响注册流程。
+/// 优先级：SMTP > SendGrid > Resend；都未配置则静默跳过，不影响注册流程。
 pub async fn send_welcome_email(to: &str, phone: &str) {
     let from = std::env::var("FROM_EMAIL")
         .unwrap_or_else(|_| "LoveMemo <noreply@lovememo.app>".to_string());
+
+    if let Ok(host) = std::env::var("SMTP_HOST") {
+        if !host.is_empty() {
+            send_with_smtp(to, &from, phone).await;
+            return;
+        }
+    }
 
     if let Ok(api_key) = std::env::var("SENDGRID_API_KEY") {
         if !api_key.is_empty() {
@@ -53,7 +64,81 @@ pub async fn send_welcome_email(to: &str, phone: &str) {
         }
     }
 
-    info!("SENDGRID_API_KEY / RESEND_API_KEY 均未配置，跳过发送欢迎邮件");
+    info!("SMTP / SENDGRID_API_KEY / RESEND_API_KEY 均未配置，跳过发送欢迎邮件");
+}
+
+async fn send_with_smtp(to: &str, from: &str, phone: &str) {
+    let host = match std::env::var("SMTP_HOST") {
+        Ok(h) if !h.is_empty() => h,
+        _ => {
+            error!("SMTP_HOST 未配置");
+            return;
+        }
+    };
+    let port: u16 = std::env::var("SMTP_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(465);
+    let user = match std::env::var("SMTP_USER") {
+        Ok(u) if !u.is_empty() => u,
+        _ => {
+            error!("SMTP_USER 未配置");
+            return;
+        }
+    };
+    let pass = match std::env::var("SMTP_PASS") {
+        Ok(p) if !p.is_empty() => p,
+        _ => {
+            error!("SMTP_PASS 未配置");
+            return;
+        }
+    };
+
+    let from_addr = parse_from_email(from);
+    let from_header = match &from_addr.name {
+        Some(name) => format!("{} <{}>", name, from_addr.email),
+        None => from_addr.email.clone(),
+    };
+
+    let email = match Message::builder()
+        .from(match from_header.parse() {
+            Ok(a) => a,
+            Err(e) => {
+                error!("发件人地址解析失败 ({}): {}", from_header, e);
+                return;
+            }
+        })
+        .to(match to.parse() {
+            Ok(a) => a,
+            Err(e) => {
+                error!("收件人地址解析失败 ({}): {}", to, e);
+                return;
+            }
+        })
+        .subject("欢迎来到 LoveMemo")
+        .header(ContentType::TEXT_HTML)
+        .body(welcome_html(phone))
+    {
+        Ok(m) => m,
+        Err(e) => {
+            error!("构造邮件失败: {}", e);
+            return;
+        }
+    };
+
+    let creds = Credentials::new(user, pass);
+    let transport = match AsyncSmtpTransport::<Tokio1Executor>::relay(&host) {
+        Ok(t) => t.port(port).credentials(creds).build(),
+        Err(e) => {
+            error!("SMTP 传输初始化失败: {}", e);
+            return;
+        }
+    };
+
+    match transport.send(email).await {
+        Ok(_) => info!("欢迎邮件发送成功: {}", to),
+        Err(e) => error!("欢迎邮件发送失败: {}", e),
+    }
 }
 
 async fn send_with_resend(to: &str, from: &str, phone: &str, api_key: &str) {
