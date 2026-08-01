@@ -126,8 +126,14 @@ async fn send_with_smtp(to: &str, from: &str, phone: &str) {
         }
     };
 
+    let security = std::env::var("SMTP_SECURITY").unwrap_or_default().to_lowercase();
     let creds = Credentials::new(user, pass);
-    let transport = match AsyncSmtpTransport::<Tokio1Executor>::relay(&host) {
+    let builder = if security == "starttls" {
+        AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&host)
+    } else {
+        AsyncSmtpTransport::<Tokio1Executor>::relay(&host)
+    };
+    let transport = match builder {
         Ok(t) => t.port(port).credentials(creds).build(),
         Err(e) => {
             error!("SMTP 传输初始化失败: {}", e);
