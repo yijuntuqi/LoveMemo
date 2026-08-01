@@ -20,6 +20,7 @@ thiserror = "1"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 reqwest = { version = "0.12", features = ["json"] }
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "tokio1-native-tls", "builder"] }
 
 [profile.dev]
 # 调试模式下禁用增量编译的 hard-link 优化，避免某些文件系统报错 1117
