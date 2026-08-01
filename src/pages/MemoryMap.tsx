@@ -14,6 +14,7 @@ import { initDatabase, getEvents, getSettings } from "../db";
 import { fetchUserInfo, searchLocation } from "../utils/api";
 import { requirePremium } from "../utils/membership";
 import { getThemeClasses } from "../utils/theme";
+import { pickSavePngPath, saveBinaryFile } from "../utils/file";
 import type { MemoryEvent, AppSettings, UserInfo } from "../types";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -298,10 +299,18 @@ export default function MemoryMap() {
         ctx.fillText(text, x, y);
       }
 
-      const link = document.createElement("a");
-      link.download = `LoveMemo_恋爱地图_${Date.now()}.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
+      // 改用文件保存对话框，让用户选择保存位置
+      const pngDataUrl = canvas.toDataURL("image/png");
+      const base64 = pngDataUrl.split(",")[1];
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const savePath = await pickSavePngPath(`LoveMemo_恋爱地图_${Date.now()}.png`);
+      if (savePath) {
+        await saveBinaryFile(savePath, bytes);
+      }
     } catch (err) {
       alert("导出地图图片失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {

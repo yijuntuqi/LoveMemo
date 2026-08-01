@@ -179,11 +179,31 @@ pub async fn register(
         )
     })?;
 
-    // 如果用户填写了邮箱，异步发送欢迎邮件，不影响注册响应
+    // 如果用户填写了邮箱，异步调用 Python 脚本发送欢迎邮件
     if let Some(email) = user.email.clone() {
         let phone = user.phone.clone();
         tokio::spawn(async move {
-            crate::email::send_welcome_email(&email, &phone).await;
+            let script_dir = std::env::current_dir().unwrap_or_default();
+            let script_path = script_dir.join("send_welcome_email.py");
+            let result = tokio::process::Command::new("python")
+                .arg(&script_path)
+                .arg(&email)
+                .arg(&phone)
+                .current_dir(&script_dir)
+                .output()
+                .await;
+            match result {
+                Ok(output) if output.status.success() => {
+                    tracing::info!("欢迎邮件已通过 Python 脚本发送至 {}", email);
+                }
+                Ok(output) => {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    tracing::error!("欢迎邮件发送失败 (Python): {}", stderr.trim());
+                }
+                Err(e) => {
+                    tracing::error!("调用 Python 邮件脚本失败: {}", e);
+                }
+            }
         });
     }
 
