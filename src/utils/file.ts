@@ -24,3 +24,15 @@ export async function saveTextFile(path: string, content: string): Promise<void>
 export async function readTextFile(path: string): Promise<string> {
   return await invoke("read_text_file", { path });
 }
+
+export async function saveBinaryFile(path: string, data: Uint8Array): Promise<void> {
+  await invoke("save_binary_file", { path, data: Array.from(data) });
+}
+
+export async function pickSavePngPath(defaultName: string): Promise<string | null> {
+  const path = await save({
+    filters: [{ name: "PNG 图片", extensions: ["png"] }],
+    defaultPath: defaultName,
+  });
+  return path || null;
+}

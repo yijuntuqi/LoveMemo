@@ -52,6 +52,11 @@ async fn read_text_file(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| format!("读取文件失败: {}", e))
 }
 
+#[tauri::command]
+async fn save_binary_file(path: String, data: Vec<u8>) -> Result<(), String> {
+    std::fs::write(&path, &data).map_err(|e| format!("写入文件失败: {}", e))
+}
+
 #[derive(serde::Serialize)]
 struct LocationResult {
     name: String,
@@ -139,6 +144,7 @@ pub fn run() {
             get_app_data_dir,
             save_text_file,
             read_text_file,
+            save_binary_file,
             geocode_address
         ])
         .run(tauri::generate_context!())
