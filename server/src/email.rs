@@ -1,6 +1,10 @@
 use lettre::{
-    message::header::ContentType, transport::smtp::authentication::Credentials, AsyncSmtpTransport,
-    AsyncTransport, Message, Tokio1Executor,
+    message::header::ContentType,
+    transport::smtp::{
+        authentication::Credentials,
+        client::{Tls, TlsParameters},
+    },
+    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
 };
 use reqwest::Client;
 use serde_json::json;
@@ -127,14 +131,30 @@ async fn send_with_smtp(to: &str, from: &str, phone: &str) {
     };
 
     let security = std::env::var("SMTP_SECURITY").unwrap_or_default().to_lowercase();
+    let allow_invalid_certs = std::env::var("SMTP_ALLOW_INVALID_CERTS")
+        .unwrap_or_default()
+        .to_lowercase()
+        == "true";
     let creds = Credentials::new(user, pass);
-    let builder = if security == "starttls" {
-        AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&host)
+
+    let tls_params = match TlsParameters::builder(host.clone())
+        .dangerous_accept_invalid_certs(allow_invalid_certs)
+        .build()
+    {
+        Ok(p) => p,
+        Err(e) => {
+            error!("SMTP TLS 参数构建失败: {}", e);
+            return;
+        }
+    };
+
+    let (builder, tls) = if security == "starttls" {
+        (AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&host), Tls::Required(tls_params))
     } else {
-        AsyncSmtpTransport::<Tokio1Executor>::relay(&host)
+        (AsyncSmtpTransport::<Tokio1Executor>::relay(&host), Tls::Wrapper(tls_params))
     };
     let transport = match builder {
-        Ok(t) => t.port(port).credentials(creds).build(),
+        Ok(t) => t.port(port).credentials(creds).tls(tls).build(),
         Err(e) => {
             error!("SMTP 传输初始化失败: {}", e);
             return;
