@@ -387,6 +387,12 @@ export default function SettingsPage() {
                   <span>退出登录</span>
                 </button>
               </div>
+              <div className="flex items-start gap-2 p-3 bg-amber-50 rounded-xl border border-amber-200">
+                <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700 leading-relaxed">
+                  请勿在同一设备上切换不同账号。本设备上的恋爱记录与本地账号绑定，切换或登录其它账号会清除当前设备的本地数据，且无法恢复。如需换设备，请先在「数据管理」中导出备份。
+                </p>
+              </div>
             </div>
           ) : (
             <p className="text-sm text-slate-500">未登录</p>
