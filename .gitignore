@@ -15,6 +15,10 @@ dist-ssr
 # Rust build artifacts
 target/
 
+# Python cache
+__pycache__/
+*.pyc
+
 # Environment files (contains secrets)
 .env
 .env.*

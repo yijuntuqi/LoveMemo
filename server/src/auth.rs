@@ -15,6 +15,10 @@ use uuid::Uuid;
 
 const JWT_SECRET_ENV: &str = "JWT_SECRET";
 
+// 编译时把 Python 脚本嵌入二进制，运行时写入临时文件执行，
+// 避免服务端在 target/release 等目录运行时找不到脚本文件。
+const WELCOME_EMAIL_PY: &str = include_str!("../send_welcome_email.py");
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: String,
@@ -183,22 +187,41 @@ pub async fn register(
     if let Some(email) = user.email.clone() {
         let phone = user.phone.clone();
         tokio::spawn(async move {
-            let script_dir = std::env::current_dir().unwrap_or_default();
-            let script_path = script_dir.join("send_welcome_email.py");
+            // 将嵌入的 Python 脚本写入临时文件，再执行
+            // 用进程 PID 固定文件名，避免每次注册都写一遍
+            let temp_dir = std::env::temp_dir();
+            let script_path = temp_dir.join(format!(
+                "lovememo_send_welcome_email_{}.py",
+                std::process::id()
+            ));
+            if let Err(e) = std::fs::write(&script_path, WELCOME_EMAIL_PY) {
+                tracing::error!("写入临时邮件脚本失败: {}", e);
+                return;
+            }
+
             let result = tokio::process::Command::new("python")
                 .arg(&script_path)
                 .arg(&email)
                 .arg(&phone)
-                .current_dir(&script_dir)
                 .output()
                 .await;
+
+            // 执行完删除临时脚本（失败也无所谓）
+            let _ = std::fs::remove_file(&script_path);
+
             match result {
                 Ok(output) if output.status.success() => {
-                    tracing::info!("欢迎邮件已通过 Python 脚本发送至 {}", email);
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    tracing::info!("欢迎邮件已通过 Python 脚本发送至 {} ({})", email, stdout.trim());
                 }
                 Ok(output) => {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    tracing::error!("欢迎邮件发送失败 (Python): {}", stderr.trim());
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    tracing::error!(
+                        "欢迎邮件发送失败 (Python): stderr={}, stdout={}",
+                        stderr.trim(),
+                        stdout.trim()
+                    );
                 }
                 Err(e) => {
                     tracing::error!("调用 Python 邮件脚本失败: {}", e);
