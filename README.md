@@ -44,8 +44,6 @@ LoveMemo 是一款专为情侣打造的恋爱纪念册桌面应用。它将恋�
 
 ## 📸 截图
 
-> 📎 截图请添加到 `docs/screenshots/` 目录
-
 | 时间线 | 恋爱地图 | 设置 |
 |:---:|:---:|:---:|
 | ![Timeline](docs/screenshots/timeline.png) | ![Map](docs/screenshots/map.png) | ![Settings](docs/screenshots/settings.png) |
