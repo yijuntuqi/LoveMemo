@@ -22,6 +22,7 @@ __pycache__/
 # Environment files (contains secrets)
 .env
 .env.*
+!.env.example
 
 # Shuttle secrets (contains secrets)
 Secrets.toml
