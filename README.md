@@ -14,7 +14,7 @@ Built with Rust · Tauri · React · AI
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
-[功能](#-功能) · [截图](#-截图) · [技术架构](#-技术架构) · [快速开始](#-快速开始) · [构建](#-从源码构建) · [文档](docs/)
+[功能](#-功能) · [截图](#-截图) · [技术架构](#-技术架构) · [快速开始](#-快速开始) · [构建](#-从源码构建) · [官网](https://lovemem.netlify.app)
 
 </div>
 
@@ -135,7 +135,7 @@ LoveMemo 采用 **Tauri Sidecar** 架构，后端二进制嵌入应用中：
 ### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/LoveMemo.git
+git clone https://github.com/yijuntuqi/LoveMemo.git
 cd LoveMemo
 ```
 
@@ -279,8 +279,8 @@ LoveMemo/
 
 ## 🌐 官方网站
 
-- **网站源码**：[`website/`](website/) 目录
-- **在线访问**：部署后填写 URL
+- **网站源码**：[LoveMemo-website](https://github.com/yijuntuqi/LoveMemo-website)
+- **在线访问**：https://lovemem.netlify.app
 
 ## 🤝 贡献
 
