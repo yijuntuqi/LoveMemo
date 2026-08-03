@@ -43,6 +43,7 @@ export default function SettingsPage() {
   const [activationCode, setActivationCode] = useState("");
   const [activateLoading, setActivateLoading] = useState(false);
   const [payTab, setPayTab] = useState<"wechat" | "alipay">("wechat");
+  const [planTab, setPlanTab] = useState<"monthly" | "yearly">("yearly");
   const [clearAllConfirmOpen, setClearAllConfirmOpen] = useState(false);
   const [clearAllLoading, setClearAllLoading] = useState(false);
   const initialLoadedRef = useRef(false);
@@ -219,9 +220,8 @@ export default function SettingsPage() {
 
   const membershipBenefits = [
     "AI 无限文案生成",
-    "高级 PDF 纪念册模板",
-    "无水印导出",
-    "专属情侣主题",
+    "高级 PDF 纪念册导出",
+    "高清恋爱地图导出",
   ];
 
   function getMembershipStatus(user: UserInfo | null) {
@@ -282,7 +282,6 @@ export default function SettingsPage() {
                 value={settings.coupleName || ""}
                 onChange={(e) => handleChange("coupleName", e.target.value)}
                 className={`w-full px-4 py-2 rounded-xl border ${t.accentBorder} focus:outline-none focus:ring-2 ${t.accentRing}`}
-                placeholder="例如：小异 & 萱萱"
               />
             </div>
             <div>
@@ -498,7 +497,7 @@ export default function SettingsPage() {
                 <p className="text-xs text-slate-500 mt-0.5">
                   {membershipStatus.isExpired || membershipStatus.isExpiringSoon
                     ? "续费后即可继续享受会员权益"
-                    : "开通会员后可使用 AI 润色、无水印导出等高级功能"}
+                    : "开通会员后可使用 AI 无限文案生成、高级 PDF 纪念册导出、高清恋爱地图导出"}
                 </p>
               </div>
             </div>
@@ -518,9 +517,46 @@ export default function SettingsPage() {
 
           {showRenewal && (
             <div className="bg-white rounded-xl p-4 border border-amber-100 mb-5">
+              {/* 套餐选择 */}
+              <p className="text-sm font-medium text-slate-700 mb-3">选择会员套餐</p>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setPlanTab("monthly")}
+                  className={`p-4 rounded-xl border-2 text-left transition-all ${
+                    planTab === "monthly"
+                      ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
+                      : "border-slate-200 hover:border-amber-200"
+                  }`}
+                >
+                  <p className="text-sm text-slate-500">月卡</p>
+                  <p className="text-2xl font-bold text-slate-800 mt-1">
+                    ¥9.9<span className="text-sm font-normal text-slate-400">/月</span>
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPlanTab("yearly")}
+                  className={`p-4 rounded-xl border-2 text-left transition-all relative ${
+                    planTab === "yearly"
+                      ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
+                      : "border-slate-200 hover:border-amber-200"
+                  }`}
+                >
+                  <span className="absolute -top-2 right-3 bg-gradient-to-r from-amber-400 to-rose-400 text-white text-xs px-2 py-0.5 rounded-full">
+                    省50%
+                  </span>
+                  <p className="text-sm text-slate-500">年卡</p>
+                  <p className="text-2xl font-bold text-slate-800 mt-1">
+                    ¥39.9<span className="text-sm font-normal text-slate-400">/年</span>
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">约 ¥3.3/月</p>
+                </button>
+              </div>
+
               <p className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-1.5">
                 <QrCode className="w-4 h-4" />
-                扫码支付后输入激活码
+                扫码支付 <span className="text-amber-600 font-semibold">¥{planTab === "monthly" ? "9.9" : "39.9"}</span> 后输入激活码
               </p>
               <div className="flex rounded-lg border border-amber-100 overflow-hidden mb-4">
                 <button

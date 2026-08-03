@@ -23,12 +23,37 @@ __pycache__/
 .env
 .env.*
 
+# Shuttle secrets (contains secrets)
+Secrets.toml
+Secrets.*.toml
+
+# Shuttle config (platform discontinued)
+Shuttle.toml
+
+# Test examples (debug code, not for public)
+server/examples/
+
+# Internal tooling (not for public repo)
+MEMBERSHIP_OPS.md
+build-release.ps1
+monitor-build.ps1
+generate_icon.py
+start-server.cmd
+server/scripts/
+server/send_welcome_email.py
+
+# Official website (separate repo: LoveMemo-website)
+website/
+
 # Database files
 *.db
 *.db-journal
 
 # Tauri bundle output
 src-tauri/target/
+
+# Tauri sidecar binaries (built from server/, not committed)
+src-tauri/binaries/
 
 # Editor directories and files
 .vscode/*

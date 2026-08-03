@@ -247,7 +247,7 @@ export default function EventForm({
       return;
     }
     if (!isPremiumUser(settings)) {
-      alert("AI 润色是会员专属功能\n\n开通会员即可享受：\n• 无限次 AI 文案润色\n• 高级纪念册模板\n• 无水印导出\n\n前往「设置 → 会员中心」扫码支付，获取激活码后输入即可开通。");
+      alert("AI 润色是会员专属功能\n\n开通会员即可享受：\n• AI 无限文案生成\n• 高级 PDF 纪念册导出\n• 高清恋爱地图导出\n\n月卡 ¥9.9/月  年卡 ¥39.9/年\n前往「设置 → 会员中心」扫码支付，获取激活码后输入即可开通。");
       return;
     }
     setAiLoading(true);

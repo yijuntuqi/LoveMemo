@@ -1,26 +1,40 @@
 # LoveMemo Server
 
-Rust/Axum 后端，连接 Neon PostgreSQL，提供注册登录、云端同步、会员激活服务。
+Rust/Axum 后端服务，作为 Tauri Sidecar 嵌入桌面应用运行。
 
-## 启动
+## 开发
 
-1. 复制环境变量文件：
-   ```bash
-   cp .env.example .env
-   ```
+```bash
+# 复制环境变量
+cp .env.example .env
+# 编辑 .env 填入真实配置
 
-2. 在 `.env` 中填入你的 Neon `DATABASE_URL` 和 `JWT_SECRET`。
+# 构建
+cargo build --release
+```
 
-3. 运行：
-   ```bash
-   cargo run
-   ```
+构建后将二进制复制为 Sidecar：
 
-## 生成激活码（手动）
+```powershell
+Copy-Item "target\release\lovememo-server.exe" "..\src-tauri\binaries\lovememo-server-x86_64-pc-windows-msvc.exe"
+```
 
-在 Neon 数据库执行：
+## 生成激活码
+
+在 PostgreSQL 数据库执行：
 
 ```sql
-INSERT INTO activation_codes (code, membership_type, expires_days)
+INSERT INTO lovememo_activation_codes (code, membership_type, expires_days)
 VALUES ('YOUR-CODE-HERE', 'premium', 365);
 ```
+
+## API
+
+| 端点 | 方法 | 说明 | 鉴权 |
+|------|------|------|------|
+| `/health` | GET | 健康检查 | 公开 |
+| `/auth/register` | POST | 用户注册 | 公开 |
+| `/auth/login` | POST | 用户登录 | 公开 |
+| `/auth/me` | GET | 获取用户信息 | JWT |
+| `/membership/activate` | POST | 激活会员码 | JWT |
+| `/ai/polish` | POST | AI 文本润色 | JWT + 会员 |

@@ -17,6 +17,9 @@
     "fs:allow-download-write",
     "dialog:default",
     "notification:default",
+    "shell:default",
+    "shell:allow-spawn",
+    "shell:allow-kill",
     {
       "identifier": "http:default",
       "allow": [
