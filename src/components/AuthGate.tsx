@@ -24,34 +24,38 @@ export default function AuthGate({ children }: AuthGateProps) {
 
   useEffect(() => {
     async function init() {
-      console.log("[AuthGate] init start");
       let s: Record<string, string> = {};
       try {
         s = await getSettings();
-        console.log("[AuthGate] settings loaded", s);
       } catch (e) {
         console.error("[AuthGate] getSettings failed", e);
       }
       setSettings(s as AppSettings);
       const url = (s.serverUrl || "http://localhost:3000").replace(/\/$/, "");
-      console.log("[AuthGate] health url", `${url}/health`);
-      try {
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("health check timeout")), 3000),
-        );
-        const res = (await Promise.race([
-          fetch(`${url}/health`, { method: "GET" }),
-          timeoutPromise,
-        ])) as Response;
-        console.log("[AuthGate] health ok", res.status);
-        setServerOk(res.ok);
-      } catch (e) {
-        console.error("[AuthGate] health failed", e);
-        setServerOk(false);
-      } finally {
-        console.log("[AuthGate] serverChecking done");
-        setServerChecking(false);
+
+      // 重试连接后端（sidecar 启动需要几秒钟）
+      let ok = false;
+      const maxRetries = 20;
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("timeout")), 2000),
+          );
+          const res = (await Promise.race([
+            fetch(`${url}/health`, { method: "GET" }),
+            timeoutPromise,
+          ])) as Response;
+          if (res.ok) {
+            ok = true;
+            break;
+          }
+        } catch (e) {
+          // 后端尚未启动，继续重试
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
+      setServerOk(ok);
+      setServerChecking(false);
       if (s.authToken) {
         try {
           const info = await fetchUserInfo(s as AppSettings);
@@ -136,7 +140,7 @@ export default function AuthGate({ children }: AuthGateProps) {
       const action = mode === "register" ? "注册" : "登录";
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("fetch") || msg.includes("Failed to fetch")) {
-        alert(`${action}失败：无法连接后端服务，请先运行 server 目录下的 cargo run`);
+        alert(`${action}失败：无法连接后端服务，请重新打开应用再试`);
       } else {
         alert(`${action}失败：${msg}`);
       }
@@ -152,7 +156,7 @@ export default function AuthGate({ children }: AuthGateProps) {
       <div className={`h-full w-full flex items-center justify-center ${t.pageBg}`}>
         <div className="text-center">
           <div className={`animate-spin rounded-full h-12 w-12 border-b-2 ${t.loadingColor} mx-auto`} />
-          <p className="mt-4 text-slate-500">正在连接 LoveMemo 服务...</p>
+          <p className="mt-4 text-slate-500">正在启动 LoveMemo 服务...</p>
         </div>
       </div>
     );
@@ -166,19 +170,15 @@ export default function AuthGate({ children }: AuthGateProps) {
             <Heart className={`w-8 h-8 ${t.accent}`} />
           </div>
           <h2 className="text-2xl font-bold text-slate-800 mb-2">LoveMemo</h2>
-          <p className="text-slate-500 mb-6">无法连接到后端服务</p>
+          <p className="text-slate-500 mb-6">后端服务启动失败</p>
           <p className="text-sm text-slate-600 mb-6">
-            请先运行 LoveMemo/server 目录下的服务，再刷新本窗口：
+            请关闭应用后重新打开，或点击下方按钮重试。
           </p>
-          <code className="block bg-slate-100 rounded-lg p-3 text-xs text-left text-slate-700 mb-6">
-            cd E:\old-new\backup\BNU_leaning\LoveMemo\server<br />
-            cargo run
-          </code>
           <button
             onClick={() => window.location.reload()}
             className={`px-6 py-2.5 text-white rounded-xl transition-colors ${t.buttonPrimary}`}
           >
-            我已启动服务，刷新
+            重新尝试
           </button>
         </div>
       </div>

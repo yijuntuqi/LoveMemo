@@ -2,6 +2,37 @@
 
 use std::path::PathBuf;
 use tauri::Manager;
+use tauri_plugin_shell::process::CommandEvent;
+use tauri_plugin_shell::ShellExt;
+
+// 编译时嵌入后端 .env 配置（文件在 .gitignore 中，不会提交 git）
+const SERVER_ENV: &str = include_str!("../../server/.env");
+
+/// 解析 .env 文件内容为 (key, value) 键值对
+fn parse_env_file(contents: &str) -> Vec<(String, String)> {
+    let mut vars = Vec::new();
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((key, value)) = line.split_once('=') {
+            let key = key.trim().to_string();
+            let value = value
+                .trim()
+                .trim_matches('\'')
+                .trim_matches('"')
+                .to_string();
+            if !key.is_empty() {
+                vars.push((key, value));
+            }
+        }
+    }
+    vars
+}
+
+/// 持有 sidecar 子进程句柄，用于应用退出时清理
+struct SidecarChild(std::sync::Mutex<Option<tauri_plugin_shell::process::CommandChild>>);
 
 fn app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
@@ -132,13 +163,14 @@ async fn geocode_address(address: String, key: String) -> Result<Vec<LocationRes
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             import_media,
             get_app_data_dir,
@@ -147,6 +179,68 @@ pub fn run() {
             save_binary_file,
             geocode_address
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .setup(|app| {
+            // 启动后端 sidecar
+            match app.shell().sidecar("lovememo-server") {
+                Ok(command) => {
+                    // 从嵌入的 .env 设置环境变量
+                    let mut cmd = command;
+                    for (key, value) in parse_env_file(SERVER_ENV) {
+                        cmd = cmd.env(key, value);
+                    }
+                    // 确保后端监听 3000 端口
+                    cmd = cmd.env("PORT", "3000");
+
+                    match cmd.spawn() {
+                        Ok((mut rx, child)) => {
+                            app.manage(SidecarChild(std::sync::Mutex::new(Some(child))));
+
+                            // 异步打印后端日志（方便调试）
+                            tauri::async_runtime::spawn(async move {
+                                while let Some(event) = rx.recv().await {
+                                    match event {
+                                        CommandEvent::Stdout(line) => {
+                                            eprintln!("[server] {}", String::from_utf8_lossy(&line));
+                                        }
+                                        CommandEvent::Stderr(line) => {
+                                            eprintln!("[server] {}", String::from_utf8_lossy(&line));
+                                        }
+                                        CommandEvent::Error(err) => {
+                                            eprintln!("[server] error: {}", err);
+                                        }
+                                        CommandEvent::Terminated(_) => {
+                                            eprintln!("[server] terminated");
+                                            break;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            eprintln!("启动后端 sidecar 失败: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("找不到后端 sidecar 二进制: {}", e);
+                }
+            }
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        // 应用退出时终止后端 sidecar
+        if let tauri::RunEvent::Exit = event {
+            if let Some(sidecar) = app_handle.try_state::<SidecarChild>() {
+                if let Ok(mut guard) = sidecar.0.lock() {
+                    if let Some(child) = guard.take() {
+                        let _ = child.kill();
+                    }
+                }
+            }
+        }
+    });
 }

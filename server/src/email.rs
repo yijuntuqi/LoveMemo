@@ -1,7 +1,7 @@
 use lettre::{
     message::header::ContentType,
     transport::smtp::{
-        authentication::Credentials,
+        authentication::{Credentials, Mechanism},
         client::{Tls, TlsParameters},
     },
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
@@ -98,17 +98,11 @@ async fn send_with_smtp(to: &str, from: &str, phone: &str) {
         }
     };
 
-    let from_addr = parse_from_email(from);
-    let from_header = match &from_addr.name {
-        Some(name) => format!("{} <{}>", name, from_addr.email),
-        None => from_addr.email.clone(),
-    };
-
     let email = match Message::builder()
-        .from(match from_header.parse() {
+        .from(match from.parse() {
             Ok(a) => a,
             Err(e) => {
-                error!("发件人地址解析失败 ({}): {}", from_header, e);
+                error!("发件人地址解析失败 ({}): {}", from, e);
                 return;
             }
         })
@@ -154,7 +148,12 @@ async fn send_with_smtp(to: &str, from: &str, phone: &str) {
         (AsyncSmtpTransport::<Tokio1Executor>::relay(&host), Tls::Wrapper(tls_params))
     };
     let transport = match builder {
-        Ok(t) => t.port(port).credentials(creds).tls(tls).build(),
+        Ok(t) => t
+            .port(port)
+            .credentials(creds)
+            .authentication(vec![Mechanism::Login, Mechanism::Plain])
+            .tls(tls)
+            .build(),
         Err(e) => {
             error!("SMTP 传输初始化失败: {}", e);
             return;
@@ -163,7 +162,7 @@ async fn send_with_smtp(to: &str, from: &str, phone: &str) {
 
     match transport.send(email).await {
         Ok(_) => info!("欢迎邮件发送成功: {}", to),
-        Err(e) => error!("欢迎邮件发送失败: {}", e),
+        Err(e) => error!("欢迎邮件发送失败: {:?}", e),
     }
 }
 
@@ -239,14 +238,53 @@ async fn send_with_sendgrid(to: &str, from: &str, phone: &str, api_key: &str) {
 }
 
 fn welcome_html(phone: &str) -> String {
+    // 手机号脱敏显示（与原 Python 版本一致，保护隐私）
+    let masked_phone = if phone.len() >= 7 {
+        format!("{}****{}", &phone[..3], &phone[phone.len() - 4..])
+    } else {
+        phone.to_string()
+    };
     format!(
-        r#"<div style="font-family:PingFang SC,Microsoft YaHei,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#334155;">
-            <h2 style="color:#e11d48;">欢迎来到 LoveMemo</h2>
-            <p>亲爱的用户，您好！</p>
-            <p>感谢您注册 LoveMemo，您的手机号是：<strong>{}</strong></p>
-            <p>LoveMemo 是一款温馨的恋爱纪念册应用，希望它能帮您记录下每一段美好的时光。</p>
-            <p style="margin-top:24px;color:#94a3b8;font-size:12px;">本邮件由 LoveMemo 自动发送，请勿回复。</p>
+        r#"<div style="font-family:'PingFang SC','Microsoft YaHei',sans-serif;max-width:560px;margin:0 auto;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 8px 32px rgba(244,63,94,0.15);">
+            <div style="background:linear-gradient(135deg,#f43f5e 0%,#ec4899 100%);padding:48px 30px;text-align:center;">
+                <div style="font-size:64px;margin-bottom:12px;line-height:1;">💕</div>
+                <h1 style="color:#ffffff;font-size:34px;margin:0;font-weight:700;letter-spacing:3px;">LoveMemo</h1>
+                <p style="color:rgba(255,255,255,0.95);font-size:15px;margin:12px 0 0;letter-spacing:2px;">记录爱 · 珍藏每一刻 · 让爱被铭记</p>
+            </div>
+            <div style="padding:40px 32px;">
+                <h2 style="color:#be123c;font-size:24px;margin:0 0 20px;text-align:center;">🎉 欢迎来到 LoveMemo！</h2>
+                <p style="color:#475569;font-size:15px;line-height:1.9;margin:0 0 20px;">
+                    亲爱的用户，您好！<br>
+                    非常感谢您选择 LoveMemo！我们由衷地为您感到开心，也无比荣幸能见证您与爱人的甜蜜旅程 🥰<br>
+                    从这一刻起，您与爱人的每一个珍贵瞬间，都将被温柔珍藏，永不褪色。
+                </p>
+                <div style="background:linear-gradient(135deg,#fff1f2 0%,#fce7f3 100%);border-radius:14px;padding:22px;margin:24px 0;border-left:4px solid #ec4899;">
+                    <p style="color:#94a3b8;font-size:13px;margin:0;">您的专属账号</p>
+                    <p style="color:#1e293b;font-size:17px;margin:8px 0 0;font-weight:600;">📱 {}</p>
+                </div>
+                <p style="color:#be123c;font-size:16px;font-weight:600;margin:28px 0 14px;">✨ 在 LoveMemo，您可以尽情记录你们的爱情故事</p>
+                <div style="background:#fffbeb;border-radius:14px;padding:20px 22px;margin:8px 0 16px;border:1px solid #fef3c7;">
+                    <p style="color:#475569;font-size:14px;margin:10px 0;">💌 <strong>恋爱时间线</strong> — 记录每一个浪漫时刻，制作属于你们的专属恋爱纪念册</p>
+                    <p style="color:#475569;font-size:14px;margin:10px 0;">🗺️ <strong>恋爱地图</strong> — 标记你们一起走过的每一个角落，珍藏每一段旅程</p>
+                    <p style="color:#475569;font-size:14px;margin:10px 0;">✨ <strong>AI 智能润色</strong> — 让每一段文字更动人，AI 帮你写出心中的爱</p>
+                    <p style="color:#475569;font-size:14px;margin:10px 0;">💎 <strong>照片与回忆</strong> — 珍藏每一张照片，永久保存你们的美好时光</p>
+                    <p style="color:#475569;font-size:14px;margin:10px 0;">📅 <strong>纪念日提醒</strong> — 不再遗忘任何重要日子，每一个纪念日都被温柔记住</p>
+                    <p style="color:#475569;font-size:14px;margin:10px 0;">📊 <strong>恋爱统计</strong> — 生成专属恋爱报告，看见你们的爱情成长轨迹</p>
+                </div>
+                <div style="background:linear-gradient(135deg,#f43f5e 0%,#ec4899 100%);border-radius:14px;padding:24px;margin:24px 0;text-align:center;">
+                    <p style="color:#ffffff;font-size:17px;font-weight:600;margin:0;">💖 现在就开始，记录你们的第一个甜蜜瞬间吧！</p>
+                    <p style="color:rgba(255,255,255,0.9);font-size:13px;margin:10px 0 0;">打开 LoveMemo，开启你们的专属恋爱纪念册</p>
+                </div>
+                <div style="text-align:center;margin:28px 0 8px;">
+                    <p style="color:#be123c;font-size:16px;font-weight:600;margin:0;">🌹 愿你们的爱情，永远如初见般美好</p>
+                    <p style="color:#94a3b8;font-size:13px;margin:10px 0 0;">LoveMemo · 用心记录每一份爱 · 让爱被永远铭记</p>
+                </div>
+            </div>
+            <div style="background:#fff1f2;border-top:1px solid #fce7f3;padding:22px 30px;text-align:center;">
+                <p style="color:#94a3b8;font-size:12px;margin:0;">本邮件由 LoveMemo 自动发送，请勿直接回复</p>
+                <p style="color:#cbd5e1;font-size:11px;margin:8px 0 0;">© LoveMemo · 记录爱 · 珍藏每一刻</p>
+            </div>
         </div>"#,
-        phone
+        masked_phone
     )
 }
